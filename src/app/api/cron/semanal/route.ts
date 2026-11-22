@@ -5,7 +5,7 @@ import { createBackup, listProjectsWithDb, projectContext } from "@/lib/projects
 export const maxDuration = 300;
 
 /**
- * Respaldo semanal (Vercel Cron, lunes 06:00 UTC) de la base de datos de cada
+ * Respaldo semanal (Vercel Schedules, lunes 06:00 UTC) de la base de datos de cada
  * proyecto vinculado. Los análisis y reparaciones van en la revisión diaria.
  */
 export async function GET(req: Request) {

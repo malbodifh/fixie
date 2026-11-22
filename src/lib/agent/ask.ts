@@ -31,6 +31,8 @@ export async function askStructured<S extends z.ZodType>(opts: {
     toolChoice: { type: "tool", toolName: opts.name },
     stopWhen: [() => out !== null, isStepCount(2)],
     maxOutputTokens: opts.maxOutputTokens ?? 4000,
+    // Las tareas rápidas no necesitan razonamiento extendido: menos tokens y menos espera.
+    providerOptions: opts.fast ? { deepseek: { thinking: { type: "disabled" } } } : undefined,
   });
   return out;
 }

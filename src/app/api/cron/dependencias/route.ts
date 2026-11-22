@@ -12,7 +12,7 @@ export const maxDuration = 300;
 const HEARTBEAT_MS = 6 * 60 * 60_000;
 
 /**
- * Vigilancia de dependencias 24/7 (Vercel Cron cada 15 min). Si se publica una
+ * Vigilancia de dependencias 24/7 (Vercel Schedules cada 15 min). Si se publica una
  * vulnerabilidad para una versión instalada, Fixie abre la actualización de
  * inmediato: prueba que la reproduce, PR, CI, revisor, merge y re-verificación.
  */

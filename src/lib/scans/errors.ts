@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { askStructured } from "../agent/ask";
+import { hasModelKey } from "../agent/model";
 import type { Repo } from "../github";
 import { fetchApp, scoreOf, summaryOf, type Finding, type ScanResult, type Severity } from "./common";
 
@@ -164,7 +165,7 @@ export async function runErrors(opts: { appUrl: string | null; repo: Repo; lastC
   findings.push(await ciFinding(opts.repo, head.sha));
 
   let reviewed = 0;
-  if (opts.lastCommit && opts.lastCommit !== head.sha && (process.env.ANTHROPIC_API_KEY || process.env.AI_GATEWAY_API_KEY)) {
+  if (opts.lastCommit && opts.lastCommit !== head.sha && hasModelKey()) {
     const r = await diffFindings(opts.repo, opts.lastCommit, head.sha).catch(() => ({ findings: [], reviewed: 0 }));
     findings.push(...r.findings);
     reviewed = r.reviewed;

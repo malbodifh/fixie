@@ -1,34 +1,31 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { gateway, type LanguageModel } from "ai";
+import { createDeepSeek } from "@ai-sdk/deepseek";
+import type { LanguageModel } from "ai";
+
+/**
+ * Los agentes usan DeepSeek V4.1 Flash (checkpoint 1017). En la API de DeepSeek
+ * ese checkpoint se pide con el alias `deepseek-flash`. AGENT_MODEL y
+ * AGENT_FAST_MODEL permiten cambiarlo sin tocar código.
+ */
+const DEFAULT_MODEL = "deepseek-flash";
 
 /** ¿Hay clave para el modelo? Sin ella, Fixie no abre reparaciones que lo necesitan. */
 export function hasModelKey(): boolean {
-  return !!(process.env.ANTHROPIC_API_KEY || process.env.AI_GATEWAY_API_KEY);
+  return !!process.env.DEEPSEEK_API_KEY;
 }
 
-function requireKey(): void {
+function provider() {
   if (!hasModelKey()) {
-    throw new Error("Falta la clave del modelo: agrega ANTHROPIC_API_KEY en .env.local (o AI_GATEWAY_API_KEY).");
+    throw new Error("Falta la clave del modelo: agrega DEEPSEEK_API_KEY en .env.local.");
   }
+  return createDeepSeek({ apiKey: process.env.DEEPSEEK_API_KEY });
 }
 
-/**
- * Modelo del agente. Con ANTHROPIC_API_KEY va directo a Anthropic; si no,
- * pasa por el Vercel AI Gateway (AI_GATEWAY_API_KEY).
- */
+/** Modelo del agente: reproduce, repara y revisa. */
 export function agentModel(): LanguageModel {
-  requireKey();
-  if (process.env.ANTHROPIC_API_KEY) {
-    return createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })(process.env.AGENT_MODEL ?? "claude-sonnet-5-5");
-  }
-  return gateway(process.env.AGENT_MODEL ?? "anthropic/claude-sonnet-5.5");
+  return provider()(process.env.AGENT_MODEL ?? DEFAULT_MODEL);
 }
 
-/** Modelo barato para tareas acotadas (sugerencias de texto, revisión del diff del día). */
+/** Modelo para tareas acotadas (sugerencias de texto, revisión del diff del día). */
 export function fastModel(): LanguageModel {
-  requireKey();
-  if (process.env.ANTHROPIC_API_KEY) {
-    return createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })(process.env.AGENT_FAST_MODEL ?? "claude-haiku-5-5");
-  }
-  return gateway(process.env.AGENT_FAST_MODEL ?? "anthropic/claude-haiku-5.5");
+  return provider()(process.env.AGENT_FAST_MODEL ?? process.env.AGENT_MODEL ?? DEFAULT_MODEL);
 }

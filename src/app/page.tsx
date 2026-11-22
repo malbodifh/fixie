@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/session";
 import { Console } from "./console";
+import { FixieLogo } from "./logo";
 import { Mascot } from "./mascot";
 import { SiteHeader } from "./site-header";
 import { SNIPPET } from "./snippet";
@@ -187,7 +188,7 @@ export default function Home() {
       <footer className="border-t border-line">
         <div className="mx-auto flex w-full max-w-[1200px] items-center justify-between gap-4 px-4 py-6 text-[13px] text-fg-3 md:px-6">
           <span className="flex items-center gap-2">
-            <Mascot mode="idle" still size={20} />
+            <FixieLogo size={16} />
             Fixie
           </span>
           <span>Hecho en el hackathon de Dojo</span>

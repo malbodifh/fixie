@@ -2,14 +2,14 @@ import { LogOut } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/session";
-import { Mascot } from "./mascot";
+import { FixieLogo } from "./logo";
 
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-bg/80 backdrop-blur-xl backdrop-saturate-150">
       <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center justify-between gap-4 px-4 md:px-6">
         <Link href="/" className="flex items-center gap-2 rounded-md text-[15px] font-semibold tracking-tight">
-          <Mascot mode="idle" still size={26} />
+          <FixieLogo size={22} />
           Fixie
         </Link>
         <Suspense fallback={<span className="skeleton h-8 w-32" aria-hidden />}>

@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { askStructured } from "../agent/ask";
+import { hasModelKey } from "../agent/model";
 import { fetchApp, scoreOf, summaryOf, type Finding, type ScanResult } from "./common";
 
 /**
@@ -233,7 +234,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
 
   // ── Textos: sugerencias que el usuario elige aplicar o no ──
   const copy = extractCopy(html);
-  const suggestions = process.env.ANTHROPIC_API_KEY || process.env.AI_GATEWAY_API_KEY ? await copySuggestions(copy).catch(() => []) : [];
+  const suggestions = hasModelKey() ? await copySuggestions(copy).catch(() => []) : [];
   f.push(...suggestions);
 
   const technical = f.filter((x) => !x.copy);

@@ -1,16 +1,20 @@
 {
-  "crons": [
-    {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "schedules": {
+    "revision-diaria": {
+      "schedule": "0 7 * * *",
       "path": "/api/cron/diario",
-      "schedule": "0 7 * * *"
+      "requestMethod": "GET"
     },
-    {
+    "respaldo-semanal": {
+      "schedule": "0 6 * * 1",
       "path": "/api/cron/semanal",
-      "schedule": "0 6 * * 1"
+      "requestMethod": "GET"
     },
-    {
+    "vigilancia-dependencias": {
+      "schedule": "*/15 * * * *",
       "path": "/api/cron/dependencias",
-      "schedule": "*/15 * * * *"
+      "requestMethod": "GET"
     }
-  ]
+  }
 }

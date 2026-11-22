@@ -5,7 +5,7 @@ import { listAllProjects } from "@/lib/projects";
 export const maxDuration = 60;
 
 /**
- * Revisión diaria (Vercel Cron, 07:00 UTC: la 1 de la mañana en Ciudad de México).
+ * Revisión diaria (Vercel Schedules, 07:00 UTC: la 1 de la mañana en Ciudad de México).
  * Reparte el trabajo: una invocación por proyecto, para que ninguno espere a otro.
  */
 export async function GET(req: Request) {
