@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-21T00:00:00Z",
+  "title": "Design System: Fixie",
+  "extensions": {
+    "colorMeta": {
+      "accent": { "role": "primary", "displayName": "Proof Blue", "canonical": "#0a66f0", "tonalRamp": ["#04214f", "#073a86", "#0a52c0", "#0a66f0", "#4a8ef5", "#86b4f8", "#c0d8fb", "#eaf2fe"] },
+      "accent-dark": { "role": "primary", "displayName": "Night Blue (text)", "canonical": "#5aa0ff", "tonalRamp": ["#0b2a57", "#124489", "#1f6feb", "#3b8bff", "#5aa0ff", "#8dbdff", "#c2dbff", "#ebf3ff"] },
+      "accent-solid-dark": { "role": "primary", "displayName": "Night Blue (fill)", "canonical": "#1f6feb", "tonalRamp": ["#08234d", "#0f3c80", "#1757c0", "#1f6feb", "#5592f0", "#8bb5f5", "#c1d8fa", "#ebf2fe"] },
+      "accent-fg": { "role": "neutral", "displayName": "On-accent White", "canonical": "#ffffff" },
+      "bg": { "role": "neutral", "displayName": "Paper Ground", "canonical": "#ffffff", "tonalRamp": ["#0a0a0b", "#18181b", "#36363c", "#52525b", "#71717a", "#d4d4d8", "#ebebed", "#f5f5f6"] },
+      "surface": { "role": "neutral", "displayName": "Surface", "canonical": "#ffffff" },
+      "surface-2": { "role": "neutral", "displayName": "Surface 2", "canonical": "#f5f5f6" },
+      "surface-3": { "role": "neutral", "displayName": "Surface 3", "canonical": "#ebebed" },
+      "line": { "role": "neutral", "displayName": "Hairline", "canonical": "#e6e6e9" },
+      "line-2": { "role": "neutral", "displayName": "Strong Hairline", "canonical": "#d4d4d8" },
+      "fg": { "role": "neutral", "displayName": "Ink", "canonical": "#0a0a0b" },
+      "fg-2": { "role": "neutral", "displayName": "Graphite", "canonical": "#52525b" },
+      "fg-3": { "role": "neutral", "displayName": "Pewter", "canonical": "#71717a" },
+      "bg-dark": { "role": "neutral", "displayName": "Night Ground", "canonical": "#0a0a0b" },
+      "surface-dark": { "role": "neutral", "displayName": "Night Surface", "canonical": "#111113" },
+      "surface-2-dark": { "role": "neutral", "displayName": "Night Surface 2", "canonical": "#18181b" },
+      "surface-3-dark": { "role": "neutral", "displayName": "Night Surface 3 / Hairline", "canonical": "#232327" },
+      "line-2-dark": { "role": "neutral", "displayName": "Night Strong Hairline", "canonical": "#36363c" },
+      "fg-dark": { "role": "neutral", "displayName": "Night Ink", "canonical": "#fafafa" },
+      "fg-2-dark": { "role": "neutral", "displayName": "Night Graphite", "canonical": "#a1a1aa" },
+      "fg-3-dark": { "role": "neutral", "displayName": "Night Pewter", "canonical": "#8a8a93" },
+      "ok": { "role": "semantic", "displayName": "Healthy Green", "canonical": "#15803d", "tonalRamp": ["#052e16", "#0f5229", "#15803d", "#22a352", "#4ade80", "#86efac", "#c9f5d8", "#effaf3"] },
+      "ok-bg": { "role": "semantic", "displayName": "Healthy Green Tint", "canonical": "#effaf3" },
+      "ok-dark": { "role": "semantic", "displayName": "Night Healthy Green", "canonical": "#4ade80" },
+      "bad": { "role": "semantic", "displayName": "Alarm Red", "canonical": "#d92d20", "tonalRamp": ["#4a0e09", "#7f1a12", "#b42318", "#d92d20", "#ff7b72", "#ffa8a1", "#fdd4d0", "#fef1f0"] },
+      "bad-bg": { "role": "semantic", "displayName": "Alarm Red Tint", "canonical": "#fef1f0" },
+      "bad-dark": { "role": "semantic", "displayName": "Night Alarm Red", "canonical": "#ff7b72" },
+      "warn": { "role": "semantic", "displayName": "Caution Amber", "canonical": "#a15c07", "tonalRamp": ["#3d2303", "#6b3d05", "#a15c07", "#d08a12", "#f5b942", "#f9d27f", "#fde9bd", "#fff8eb"] },
+      "warn-bg": { "role": "semantic", "displayName": "Caution Amber Tint", "canonical": "#fff8eb" },
+      "warn-dark": { "role": "semantic", "displayName": "Night Caution Amber", "canonical": "#f5b942" },
+      "add-bg": { "role": "semantic", "displayName": "Diff Added", "canonical": "#e8f6ec" },
+      "del-bg": { "role": "semantic", "displayName": "Diff Removed", "canonical": "#fdeceb" },
+      "fixie-white": { "role": "tertiary", "displayName": "Fixie White", "canonical": "#ffffff" },
+      "fixie-ink": { "role": "tertiary", "displayName": "Fixie Ink", "canonical": "#0b0d12" },
+      "fixie-blue": { "role": "tertiary", "displayName": "Fixie Blue", "canonical": "#2f7bff" },
+      "fixie-blue-light": { "role": "tertiary", "displayName": "Fixie Eye Blue", "canonical": "#7fb2ff" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Landing hero headline only; balanced, max 14ch." },
+      "headline": { "displayName": "Headline", "purpose": "Landing section titles." },
+      "title": { "displayName": "Title", "purpose": "In-app page titles (project name, Proyectos)." },
+      "subtitle": { "displayName": "Subtitle", "purpose": "Feature and list item titles, header wordmark." },
+      "lead": { "displayName": "Lead", "purpose": "Hero supporting sentence, max 52ch." },
+      "body": { "displayName": "Body", "purpose": "Default UI text." },
+      "label": { "displayName": "Label", "purpose": "Form labels, breadcrumbs, metadata rows." },
+      "caption": { "displayName": "Caption", "purpose": "Badges, timestamps, footnotes." },
+      "mono": { "displayName": "Mono", "purpose": "Code, data and error strings only." }
+    },
+    "shadows": [
+      { "name": "card", "value": "0 1px 2px rgb(16 16 20 / 0.04), 0 2px 6px rgb(16 16 20 / 0.04)", "purpose": "Ambient lift under cards, icon tiles and code windows in light mode; transparent in dark mode." },
+      { "name": "float", "value": "0 1px 2px rgb(16 16 20 / 0.04), 0 12px 32px -8px rgb(16 16 20 / 0.12)", "purpose": "Landing product window and mascot plate (light)." },
+      { "name": "float-dark", "value": "0 16px 40px -12px rgb(0 0 0 / 0.6)", "purpose": "Float shadow in dark mode." },
+      { "name": "focus-ring", "value": "0 0 0 3px var(--ring)", "purpose": "Focus on buttons and inputs; ring is accent at 35% (light) / 40% (dark)." }
+    ],
+    "motion": [
+      { "name": "state", "value": "150ms ease", "purpose": "Button and input color, border and ring transitions." },
+      { "name": "step-in", "value": "250ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "New stepper and activity rows rise 4px into place; staggered 90ms in the hero demo." },
+      { "name": "live-dot", "value": "1.6s ease-in-out infinite", "purpose": "Pulsing dot on the active, working step." },
+      { "name": "shimmer", "value": "1.6s linear infinite", "purpose": "Skeleton loading." },
+      { "name": "fixie-idle", "value": "3.2s ease-in-out bob, 4.6s blink", "purpose": "Mascot rest state." },
+      { "name": "fixie-loop", "value": "12s cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Mascot prop cycle (magnifier, laptop, glasses, paper) in hero and empty states." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Solid accent fill for the one main action per view, such as Entrar con GitHub or Nuevo proyecto.",
+      "html": "<button class=\"ds-btn ds-btn-primary\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"M12 5v14\"/></svg>Nuevo proyecto</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; height: 2.25rem; border: 1px solid transparent; border-radius: 8px; padding: 0 0.95rem; font: 500 14px/1 var(--font-geist-sans, system-ui), sans-serif; white-space: nowrap; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; } .ds-btn svg { width: 16px; height: 16px; } .ds-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, rgb(10 102 240 / 0.35)); } .ds-btn-primary { background: var(--accent-solid, #0a66f0); color: var(--accent-fg, #fff); } .ds-btn-primary:hover { background: color-mix(in srgb, var(--accent-solid, #0a66f0) 88%, black); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action beside a primary, such as Ver una demo, or an inactive Ajustes.",
+      "html": "<button class=\"ds-btn-outline\">Ver una demo</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; height: 2.25rem; padding: 0 0.95rem; border-radius: 8px; border: 1px solid var(--line-2, #d4d4d8); background: var(--surface, #fff); color: var(--fg, #0a0a0b); font: 500 14px/1 var(--font-geist-sans, system-ui), sans-serif; cursor: pointer; transition: background-color 150ms ease, box-shadow 150ms ease; } .ds-btn-outline:hover { background: var(--surface-2, #f5f5f6); } .ds-btn-outline:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, rgb(10 102 240 / 0.35)); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Low-emphasis nav and utility actions (Proyectos, Copiar, icon-only logout).",
+      "html": "<button class=\"ds-btn-ghost\">Proyectos</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; height: 2rem; padding: 0 0.75rem; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--fg-2, #52525b); font: 500 13px/1 var(--font-geist-sans, system-ui), sans-serif; cursor: pointer; transition: background-color 150ms ease, color 150ms ease; } .ds-btn-ghost:hover { background: var(--surface-2, #f5f5f6); color: var(--fg, #0a0a0b); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring, rgb(10 102 240 / 0.35)); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Default field with a strong hairline border and an accent border plus ring on focus.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-label\">URL de producción</span><input class=\"ds-input\" placeholder=\"https://tu-app.vercel.app\" /></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; } .ds-label { font: 500 13px/1.4 var(--font-geist-sans, system-ui), sans-serif; color: var(--fg-2, #52525b); } .ds-input { width: 100%; height: 2.25rem; border: 1px solid var(--line-2, #d4d4d8); border-radius: 8px; background: var(--surface, #fff); padding: 0 0.75rem; font: 14px var(--font-geist-sans, system-ui), sans-serif; color: var(--fg, #0a0a0b); transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-input::placeholder { color: var(--fg-3, #71717a); } .ds-input:focus-visible { outline: none; border-color: var(--accent, #0a66f0); box-shadow: 0 0 0 3px var(--ring, rgb(10 102 240 / 0.35)); }"
+    },
+    {
+      "name": "Status Badges",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Tinted health and severity badges, following The Severity Ladder Rule.",
+      "html": "<div class=\"ds-badges\"><span class=\"ds-badge ds-crit\">Crítico</span><span class=\"ds-badge ds-bad\">Alto</span><span class=\"ds-badge ds-warn\">Medio</span><span class=\"ds-badge ds-neutral\">Bajo</span><span class=\"ds-badge ds-info\">Info</span><span class=\"ds-badge ds-ok\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>Sano</span></div>",
+      "css": ".ds-badges { display: flex; flex-wrap: wrap; gap: 6px; } .ds-badge { display: inline-flex; align-items: center; gap: 0.3rem; height: 1.375rem; border-radius: 6px; padding: 0 0.45rem; font: 500 12px/1 var(--font-geist-sans, system-ui), sans-serif; white-space: nowrap; font-variant-numeric: tabular-nums; } .ds-badge svg { width: 12px; height: 12px; } .ds-crit { background: var(--bad, #d92d20); color: #fff; } .ds-bad { background: var(--bad-bg, #fef1f0); color: var(--bad, #d92d20); } .ds-warn { background: var(--warn-bg, #fff8eb); color: var(--warn, #a15c07); } .ds-neutral { background: var(--surface-2, #f5f5f6); color: var(--fg-2, #52525b); } .ds-info { background: var(--surface-2, #f5f5f6); color: var(--fg-3, #71717a); } .ds-ok { background: var(--ok-bg, #effaf3); color: var(--ok, #15803d); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The base container: Surface fill, hairline border, 12px radius, light-only ambient shadow, and a header row with a bottom hairline.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-head\"><span class=\"ds-card-title\">Base de datos</span><span class=\"ds-card-meta\">3 respaldos</span></div><div class=\"ds-card-body\">Fixie puede leer para diagnosticar y agregar estructura. Nunca borra ni cambia tus datos.</div></div>",
+      "css": ".ds-card { background: var(--surface, #fff); border: 1px solid var(--line, #e6e6e9); border-radius: 12px; box-shadow: var(--shadow, 0 1px 2px rgb(16 16 20 / 0.04), 0 2px 6px rgb(16 16 20 / 0.04)); max-width: 420px; font-family: var(--font-geist-sans, system-ui), sans-serif; color: var(--fg, #0a0a0b); } .ds-card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; border-bottom: 1px solid var(--line, #e6e6e9); padding: 0.875rem 1.25rem; } .ds-card-title { font-size: 15px; font-weight: 600; } .ds-card-meta { font-size: 12px; color: var(--fg-3, #71717a); } .ds-card-body { padding: 1.25rem; font-size: 14px; line-height: 1.6; color: var(--fg-2, #52525b); }"
+    },
+    {
+      "name": "Category Tabs",
+      "kind": "nav",
+      "refersTo": "category-tabs",
+      "description": "Dashboard categories on desktop: underline tabs with status badges and a 2px accent underline on the active tab. They become a 2x2 bordered grid on phones (built deviation from segmented).",
+      "html": "<nav class=\"ds-tabs\"><a class=\"ds-tab is-active\" href=\"#\">Errores <span class=\"ds-tbadge ds-tok\">Sano</span></a><a class=\"ds-tab\" href=\"#\">Pentesting <span class=\"ds-tbadge ds-twarn\">72</span></a><a class=\"ds-tab\" href=\"#\">SEO <span class=\"ds-tbadge ds-tok\">96</span></a><a class=\"ds-tab\" href=\"#\">Lighthouse <span class=\"ds-tbadge ds-tnone\">Sin analizar</span></a></nav>",
+      "css": ".ds-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line, #e6e6e9); font-family: var(--font-geist-sans, system-ui), sans-serif; } .ds-tab { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 12px 12px; font-size: 14px; font-weight: 500; color: var(--fg-2, #52525b); text-decoration: none; border-radius: 6px 6px 0 0; transition: color 150ms ease; } .ds-tab:hover { color: var(--fg, #0a0a0b); } .ds-tab:focus-visible { outline: 2px solid var(--accent, #0a66f0); outline-offset: 2px; } .ds-tab.is-active { color: var(--fg, #0a0a0b); } .ds-tab.is-active::after { content: \"\"; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 999px; background: var(--accent, #0a66f0); } .ds-tbadge { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 6px; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; } .ds-tok { background: var(--ok-bg, #effaf3); color: var(--ok, #15803d); } .ds-twarn { background: var(--warn-bg, #fff8eb); color: var(--warn, #a15c07); } .ds-tnone { background: var(--surface-2, #f5f5f6); color: var(--fg-3, #71717a); }"
+    },
+    {
+      "name": "Score Meter",
+      "kind": "custom",
+      "refersTo": "meter",
+      "description": "A 6px round track whose fill takes its parent's score tone through currentColor.",
+      "html": "<div class=\"ds-metric\"><span class=\"ds-metric-row\"><span>Rendimiento</span><b>94</b></span><span class=\"ds-meter\"><span style=\"width:94%\"></span></span></div>",
+      "css": ".ds-metric { display: flex; flex-direction: column; gap: 6px; width: 200px; color: var(--ok, #15803d); font-family: var(--font-geist-sans, system-ui), sans-serif; } .ds-metric-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--fg-3, #71717a); } .ds-metric-row b { font-size: 12px; font-weight: 500; color: var(--ok, #15803d); font-variant-numeric: tabular-nums; } .ds-meter { position: relative; height: 6px; border-radius: 999px; background: var(--surface-3, #ebebed); overflow: hidden; } .ds-meter > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: currentColor; }"
+    },
+    {
+      "name": "Code Window",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Mono code block with a file-name header bar; the sanctioned home of Geist Mono.",
+      "html": "<div class=\"ds-code\"><p class=\"ds-code-head\">src/instrumentation.ts</p><pre class=\"ds-code-body\">export async function register() {\n  // Fixie reporta errores de producción\n}</pre></div>",
+      "css": ".ds-code { max-width: 420px; overflow: hidden; border: 1px solid var(--line, #e6e6e9); border-radius: 12px; background: var(--surface, #fff); box-shadow: var(--shadow, 0 1px 2px rgb(16 16 20 / 0.04), 0 2px 6px rgb(16 16 20 / 0.04)); } .ds-code-head { margin: 0; border-bottom: 1px solid var(--line, #e6e6e9); padding: 10px 16px; font: 12px var(--font-geist-mono, ui-monospace), monospace; color: var(--fg-3, #71717a); } .ds-code-body { margin: 0; padding: 16px; overflow: auto; font: 12px/1.625 var(--font-geist-mono, ui-monospace), monospace; color: var(--fg-2, #52525b); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Workbench",
+    "overview": "Fixie is a calm tool that proves fixes before they ship, and the interface behaves like the tool: neutral zinc surfaces, one-pixel hairlines, gently rounded containers and a single blue that only ever means \"act here\" or \"this is the current state\". The canon is user-pinned (Apple / Notion / shadcn), played straight: no costume, no theatrics. Evidence (error strings, diffs, scores, commit data) carries the drama; chrome stays out of its way.\n\nDensity is product-grade. Body text sits at 14px, labels at 13px, and screens are built from bordered cards on a white (light) or near-black (dark) ground. The system follows the operating system's light or dark preference; there is no manual toggle. Light mode uses soft, low-contrast ambient shadows; dark mode drops card shadows entirely and leans on the hairline borders and stepped surface tones.\n\nThe one piece of character is Fixie, a vector robot in white, ink and blue, used sparingly at fixed moments. The world refuses the neon-on-black \"AI devtool\" look, terminal costume, gradients and emoji.",
+    "keyCharacteristics": [
+      "Neutral zinc surfaces, 1px hairline borders, 8-12px radii.",
+      "One blue accent for primary actions, selection, focus and live state.",
+      "Status speaks in green / amber / red tinted badges; low severities stay neutral.",
+      "Geist for everything, Geist Mono only for code, data and error strings.",
+      "Follows system light/dark through CSS custom properties.",
+      "Fixie the mascot appears only at five sanctioned places.",
+      "All copy in Spanish; the user-facing name is always \"Fixie\"."
+    ],
+    "rules": [
+      { "name": "The One Blue Rule", "body": "Blue means action, selection, focus or live state, and nothing else. It never encodes severity, health or decoration.", "section": "colors" },
+      { "name": "The Severity Ladder Rule", "body": "Crítico is solid red with white text; Alto is tinted red; Medio is tinted amber; Bajo and Info are neutral zinc (Bajo in Graphite, Info in Pewter). Scores follow 90+ green, 50-89 amber, under 50 red. Low severities never borrow a hue.", "section": "colors" },
+      { "name": "The Token-Only Rule", "body": "UI color comes from the custom properties so both themes stay in sync. The only hex literals outside `globals.css` are the mascot palette and the QR code (ink on white).", "section": "colors" },
+      { "name": "The Mono-Means-Machine Rule", "body": "Geist Mono is only for code, data and error strings: snippets, file names, keys, stack messages and diffs. Headings, labels, buttons and badges never go mono.", "section": "typography" },
+      { "name": "The Tabular Numbers Rule", "body": "Any changing or compared number (scores, counts, step indices, sizes) uses tabular figures.", "section": "typography" },
+      { "name": "The Hairline-First Rule", "body": "Separation is a 1px line before it is a shadow. Shadows are ambient and soft, never hard or offset, and they disappear in dark mode except for float.", "section": "elevation" },
+      { "name": "The Five Appearances Rule", "body": "Fixie appears only in the header mark, the landing hero, empty states, the incident Actividad header and the footer. Never use him as decoration, a loading spinner or a list icon.", "section": "components" }
+    ],
+    "dos": [
+      "Do take every color from the custom properties so light and dark stay paired; follow `prefers-color-scheme`.",
+      "Do keep blue for primary actions, selection, focus and live state (light accent, dark accent and accent fill as recorded).",
+      "Do show severity as Crítico solid red, Alto tinted red, Medio tinted amber, and Bajo / Info neutral zinc.",
+      "Do separate with 1px hairlines and 8-12px radii; let light-mode shadows stay ambient and drop them in dark mode.",
+      "Do use Lucide stroke icons: 1.75 stroke for feature, tab and section icons, and Lucide's default inside buttons and badges.",
+      "Do use tabular figures for scores, counts and step numbers.",
+      "Do write all UI copy in Spanish and call the product \"Fixie\".",
+      "Do respect reduced motion: stop step-in, live-dot, skeleton shimmer and all mascot animation."
+    ],
+    "donts": [
+      "Don't put emojis anywhere in the UI.",
+      "Don't set headings, labels, buttons or badges in Geist Mono; mono is only for code, data and error strings.",
+      "Don't use blue for severity or health, and don't give Bajo or Info a hue.",
+      "Don't use gradients, neon glows or terminal-costume styling. The skeleton shimmer is the only gradient, and it is a loading state.",
+      "Don't place Fixie anywhere beyond the header mark, landing hero, empty states, incident Actividad header and footer.",
+      "Don't show the working name \"Autosana\" in user-facing copy.",
+      "Don't use hard or offset shadows."
+    ]
+  }
+}
