@@ -119,6 +119,11 @@ if (db === "supabase") { wanted.add("NEXT_PUBLIC_SUPABASE_URL"); wanted.add("NEX
 
 function value(n) {
   const N = n.toUpperCase();
+  // Redis y Mongo locales del runner (antes que Postgres: MONGODB_URI también termina en DB_URI).
+  if (/MONGO/.test(N) && /(URL|URI)$/.test(N)) return "mongodb://localhost:27017/fixie_test";
+  if (/(REDIS|^KV_)/.test(N) && /(URL|URI)$/.test(N) && !/REST/.test(N)) return "redis://localhost:6379";
+  if (N === "REDIS_HOST") return "localhost";
+  if (N === "REDIS_PORT") return "6379";
   if (/SUPABASE/.test(N) && /(URL|URI)$/.test(N)) return sbUrl;
   if (/SUPABASE/.test(N) && /(ANON|PUBLISHABLE)/.test(N)) return sbAnon;
   if (/SERVICE_ROLE/.test(N) || (/SUPABASE/.test(N) && /(SERVICE|SECRET)/.test(N))) return sbService;

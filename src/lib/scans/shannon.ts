@@ -20,7 +20,7 @@ export const DEEP_MODEL_VAR = "FIXIE_SHANNON_MODEL";
 const PATH = `.github/workflows/${DEEP_WORKFLOW}`;
 const PREPARE_PATH = ".github/fixie/prepare.mjs";
 /** Marca de la versión del workflow. Si el repo tiene otra, Fixie lo actualiza. */
-const WORKFLOW_VERSION = "fixie-pentest v4";
+const WORKFLOW_VERSION = "fixie-pentest v5";
 
 const WORKFLOW_YAML = [
   `# ${WORKFLOW_VERSION}. Lo instala Fixie. Arma un entorno de pruebas desechable dentro de este runner`,
@@ -52,6 +52,16 @@ const WORKFLOW_YAML = [
   "        ports:",
   "          - 5432:5432",
   "        options: --health-cmd \"pg_isready -U postgres\" --health-interval 5s --health-timeout 5s --health-retries 20",
+  "      redis:",
+  "        image: redis:7",
+  "        ports:",
+  "          - 6379:6379",
+  "        options: --health-cmd \"redis-cli ping\" --health-interval 5s --health-timeout 5s --health-retries 20",
+  "      mongo:",
+  "        image: mongo:7",
+  "        ports:",
+  "          - 27017:27017",
+  "        options: --health-cmd \"mongosh --quiet --eval db.version()\" --health-interval 5s --health-timeout 5s --health-retries 20",
   "    steps:",
   "      - uses: actions/checkout@v4",
   "      - uses: actions/setup-node@v4",
