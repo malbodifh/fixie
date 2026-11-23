@@ -101,7 +101,15 @@ export const credits = (usd: number) => usd / CREDIT_USD;
 
 /** Cobertura de vulnerabilidades conocidas: incluida en los planes de pago. */
 export const coversKnownVulns = (plan: Plan) => plan !== "free";
-export const KNOWN_VULNS_UPSELL = "La vigilancia de vulnerabilidades conocidas está incluida en Pro, Max y Enterprise.";
+export const KNOWN_VULNS_UPSELL = "La vigilancia de vulnerabilidades conocidas llega con los planes de pago (Pro, Max y Enterprise), que estarán disponibles pronto.";
+
+/**
+ * Por ahora solo existe el plan gratis (decisión del usuario, 2026-11-22): los de pago
+ * se muestran como "Próximamente" y no se pueden contratar.
+ */
+export function availableNow(plan: Plan): boolean {
+  return plan === "free";
+}
 
 /** "29 de noviembre" en la hora de Ciudad de México. */
 export function dayLabel(ms: number): string {

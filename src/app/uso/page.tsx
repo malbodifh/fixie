@@ -1,6 +1,6 @@
 import { PauseCircle, Zap } from "lucide-react";
 import { Suspense } from "react";
-import { allowance, coversKnownVulns, credits, CYCLE_DAYS, WEEKS_PER_CYCLE, dayLabel, fmtCredits, PLAN_ORDER, PLANS, shortDay, type Budget, type Week } from "@/lib/plans";
+import { allowance, availableNow, coversKnownVulns, credits, CYCLE_DAYS, WEEKS_PER_CYCLE, dayLabel, fmtCredits, PLAN_ORDER, PLANS, shortDay, type Budget, type Week } from "@/lib/plans";
 import { listProjects } from "@/lib/projects";
 import { requireUserRow } from "@/lib/session";
 import { budgetFor, usageEventsSince, type UsageKind } from "@/lib/usage";
@@ -253,6 +253,7 @@ function PlanTable({ current }: { current: Budget["plan"] }) {
                     <span className="flex items-center gap-2">
                       {plan.label}
                       {mine && <span className="badge bg-accent-soft text-accent">Tu plan</span>}
+                      {!mine && !availableNow(p) && <span className="badge bg-surface-2 text-fg-2">Próximamente</span>}
                     </span>
                   </td>
                   <td className="px-5 py-3 tabular">{fmtCredits(plan.monthlyCredits)}</td>

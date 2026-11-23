@@ -308,7 +308,7 @@ async function ProjectDashboard({ params, searchParams }: { params: Promise<{ id
                     </div>
                   </div>
                   <Link href="/uso" className="btn btn-outline shrink-0">
-                    Ver planes
+                    Ver los planes
                   </Link>
                 </div>
               </>

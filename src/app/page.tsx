@@ -80,7 +80,7 @@ export default function Home() {
                 <span className="ml-auto shrink-0 text-ok">Arreglado en 1:02</span>
               </div>
             </Feature>
-            <Feature icon={ShieldCheck} title="Pentesting" text="Cabeceras, cookies y CORS. En los planes de pago, tus dependencias vigiladas 24/7: si sale una vulnerabilidad, Fixie actualiza.">
+            <Feature icon={ShieldCheck} title="Pentesting" text="Cabeceras, cookies y CORS. Pronto, en los planes de pago: tus dependencias vigiladas 24/7 y actualizadas en cuanto sale una vulnerabilidad.">
               <FindingRow sev="Alto" tone="bad" text="Sin Content-Security-Policy" />
             </Feature>
             <Feature icon={MousePointerClick} title="Conversión" text="Lo que hace que un visitante compre, se registre o te escriba.">
