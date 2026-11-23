@@ -3,7 +3,7 @@ import { z } from "zod";
 import { askStructured } from "../agent/ask";
 import type { ProjectRow } from "../db";
 import { hasModelKey } from "../agent/model";
-import { fetchApp, scoreOf, summaryOf, type Finding, type ScanResult } from "./common";
+import { fetchApp, HostBlockedError, mapLimit, scoreOf, summaryOf, type Finding, type ScanResult } from "./common";
 
 /**
  * Conversión: lo que hace que un visitante compre, se registre o te contacte.
@@ -155,7 +155,11 @@ export async function runConversion(appUrl: string, project: Pick<ProjectRow, "i
         .filter((h): h is string => !!h),
     ),
   ].slice(0, 15);
-  const linkChecks = await Promise.all(hrefs.map(async (h) => ({ h, status: (await fetchApp(h, { method: "GET" }, 8000).catch(() => null))?.status ?? 0 })));
+  // De a 4 y sin contar como roto lo que frenó el firewall del hosting (-1).
+  const linkChecks = await mapLimit(hrefs, 4, async (h) => {
+    const r = await fetchApp(h, { method: "GET" }, 8000).catch((err: unknown) => (err instanceof HostBlockedError ? -1 : null));
+    return { h, status: typeof r === "number" ? r : (r?.status ?? 0) };
+  });
   const broken = linkChecks.filter((l) => l.status === 0 || l.status >= 400);
   add({
     id: "broken-links",
@@ -182,7 +186,10 @@ export async function runConversion(appUrl: string, project: Pick<ProjectRow, "i
     ),
   ].slice(0, 15);
   if (srcs.length) {
-    const imgChecks = await Promise.all(srcs.map(async (s) => ({ s, ok: !!(await fetchApp(s, {}, 8000).catch(() => null))?.ok })));
+    const imgChecks = await mapLimit(srcs, 4, async (s) => {
+      const r = await fetchApp(s, {}, 8000).catch((err: unknown) => (err instanceof HostBlockedError ? "blocked" : null));
+      return { s, ok: r === "blocked" || !!r?.ok };
+    });
     const brokenImgs = imgChecks.filter((i) => !i.ok);
     add({
       id: "broken-images",
