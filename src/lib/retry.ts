@@ -1,6 +1,6 @@
 import "server-only";
 import { startAgent, startRepair } from "./agent/advance";
-import { hasModelKey } from "./agent/model";
+import { hasModelKey, missingKeyMessage } from "./agent/model";
 import type { ProjectRow } from "./db";
 import { getIncident, postStep } from "./incidents";
 import { projectContext } from "./projects";
@@ -12,7 +12,7 @@ import { BudgetExceededError, checkAllowance, isCriticalWork } from "./usage";
  * Devuelve el trabajo de fondo para correrlo en after().
  */
 export async function retryIncident(project: ProjectRow, issue: number): Promise<{ error: string } | { job: () => Promise<void> }> {
-  if (!hasModelKey()) return { error: "Falta la clave del modelo: agrega DEEPSEEK_API_KEY en la configuración del servidor." };
+  if (!hasModelKey()) return { error: missingKeyMessage() };
   const ctx = await projectContext(project);
   const inc = await getIncident(ctx.repo, issue).catch(() => null);
   if (!inc) return { error: `No encontré el incidente #${issue}.` };
