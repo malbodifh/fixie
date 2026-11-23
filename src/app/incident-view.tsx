@@ -15,6 +15,8 @@ import {
   GitPullRequest,
   CircleHelp,
   Lightbulb,
+  PauseCircle,
+  PlayCircle,
   RotateCw,
   Search,
   ShieldAlert,
@@ -24,8 +26,10 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { MAX_ROUNDS, REPAIR_LABEL, type Stage, type Step } from "@/lib/model";
+import Link from "next/link";
+import { useEffect, useState, useTransition } from "react";
+import { retryIncidentAction } from "./proyectos/actions";
+import { currentAttempt, deriveStage, MAX_ROUNDS, REPAIR_LABEL, type Stage, type Step } from "@/lib/model";
 import { Mascot, type MascotMode } from "./mascot";
 import { clock, timeAgo } from "./time";
 import { TERMINAL, useIncident, type IncidentSource } from "./use-incident";
@@ -67,6 +71,9 @@ const STEP: Record<Step["kind"], { icon: LucideIcon; tone: Tone }> = {
   merged: { icon: GitMerge, tone: "accent" },
   verified: { icon: CircleCheck, tone: "ok" },
   failed: { icon: XCircle, tone: "bad" },
+  paused: { icon: PauseCircle, tone: "warn" },
+  resumed: { icon: PlayCircle, tone: "accent" },
+  retried: { icon: RotateCw, tone: "accent" },
 };
 
 const TONE: Record<Tone, string> = {
@@ -85,8 +92,13 @@ function plain(text: string): string {
 }
 
 export function IncidentView({ source }: { source: IncidentSource }) {
-  const { data, error } = useIncident(source);
+  const { data, error, reload } = useIncident(source);
   const [now, setNow] = useState(() => Date.now());
+  const [retrying, startRetry] = useTransition();
+  const [retryError, setRetryError] = useState<string | null>(null);
+  // Pasos que tenía el incidente al pedir el reintento: el botón sigue bloqueado
+  // hasta que la consulta traiga el reintento, para no lanzarlo dos veces.
+  const [retriedAt, setRetriedAt] = useState<number | null>(null);
 
   const stage = data?.incident.stage;
   useEffect(() => {
@@ -113,17 +125,39 @@ export function IncidentView({ source }: { source: IncidentSource }) {
   const verified = incident.stage === "verificado";
   const failed = incident.stage === "fallido";
   const review = incident.stage === "revision";
-  const working = !TERMINAL.includes(incident.stage) && !review;
+  const paused = incident.stage === "pausado";
+  const working = !TERMINAL.includes(incident.stage);
 
-  const verifiedAt = incident.steps.find((s) => s.kind === "verified")?.at;
+  // Tras un reintento, lo anterior es historia: el estado y el tiempo cuentan desde ahí.
+  const attempt = currentAttempt(incident.steps);
+  const startedAt = attempt[0]?.kind === "retried" ? attempt[0].at : incident.createdAt;
+  const verifiedAt = attempt.find((s) => s.kind === "verified")?.at;
   const lastAt = incident.steps.at(-1)?.at ?? incident.createdAt;
-  const end = verifiedAt ? Date.parse(verifiedAt) : TERMINAL.includes(incident.stage) || review ? Date.parse(lastAt) : now;
-  const elapsed = end - Date.parse(incident.createdAt);
-  const stageIndex = STAGES.findIndex((s) => s.id === incident.stage);
-  const diagnosis = incident.steps.find((s) => s.kind === "diagnosis");
-  const reviewNote = [...incident.steps].reverse().find((s) => s.kind === "needs_review" || s.kind === "not_reproduced");
-  const fixieMode: MascotMode = verified ? "happy" : failed || review ? "sad" : incident.stage === "revisando" ? "reviewing" : working ? "typing" : "idle";
-  const finalScore = incident.steps.find((s) => s.kind === "verified" || s.kind === "needs_review")?.data.score;
+  const end = verifiedAt ? Date.parse(verifiedAt) : working ? now : Date.parse(lastAt);
+  const pauseNote = paused ? incident.steps.at(-1) : undefined;
+  const elapsed = end - Date.parse(startedAt);
+  // En pausa, las etapas muestran dónde se quedó el trabajo.
+  const stageIndex = STAGES.findIndex((s) => s.id === (paused ? deriveStage(attempt.slice(0, -1)) : incident.stage));
+  const diagnosis = attempt.find((s) => s.kind === "diagnosis");
+  const failNote = [...attempt].reverse().find((s) => s.kind === "failed");
+  const reviewNote = [...attempt].reverse().find((s) => s.kind === "needs_review" || s.kind === "not_reproduced");
+  const fixieMode: MascotMode = verified ? "happy" : failed || review ? "sad" : paused ? "idle" : incident.stage === "revisando" ? "reviewing" : working ? "typing" : "idle";
+  const finalScore = attempt.find((s) => s.kind === "verified" || s.kind === "needs_review")?.data.score;
+  const canRetry = source.kind === "live" && (failed || review || paused);
+  const awaitingRetry = retrying || retriedAt === incident.steps.length;
+  const retry = () => {
+    if (source.kind !== "live" || awaitingRetry) return;
+    setRetryError(null);
+    const steps = incident.steps.length;
+    startRetry(async () => {
+      const res = await retryIncidentAction(source.projectId, source.number);
+      if (res?.error) setRetryError(res.error);
+      else {
+        setRetriedAt(steps);
+        reload();
+      }
+    });
+  };
   const prUrl = incident.pr && source.kind === "live" ? incident.url.replace(/\/issues\/\d+$/, `/pull/${incident.pr}`) : null;
 
   const status = verified
@@ -132,6 +166,8 @@ export function IncidentView({ source }: { source: IncidentSource }) {
       ? { text: "Detenido", cls: "bg-bad-bg text-bad" }
       : review
         ? { text: "Espera revisión", cls: "bg-warn-bg text-warn" }
+        : paused
+          ? { text: "En pausa", cls: "bg-warn-bg text-warn" }
         : { text: STAGES[stageIndex]?.verb ?? "Trabajando", cls: "bg-accent-soft text-accent" };
 
   return (
@@ -177,12 +213,21 @@ export function IncidentView({ source }: { source: IncidentSource }) {
             )}
           </div>
           <div className="shrink-0 md:text-right">
-            <p className="text-[13px] text-fg-3">{verified ? (r ? "Reparado en" : "Arreglado en") : failed || review ? "Se detuvo tras" : "Tiempo"}</p>
+            <p className="text-[13px] text-fg-3">{verified ? (r ? "Reparado en" : "Arreglado en") : failed || review || paused ? "Se detuvo tras" : "Tiempo"}</p>
             <p className={`text-[40px] font-semibold leading-none tracking-tight tabular ${verified ? "text-ok" : ""}`}>{clock(elapsed)}</p>
             {r && finalScore !== undefined && (
               <p className="mt-2 text-[13px] text-fg-2 tabular">
                 Puntaje {r.scoreBefore ?? "—"} <ArrowRight className="inline h-3 w-3 text-fg-3" aria-label="a" /> <span className="font-semibold text-ok">{finalScore}</span>
               </p>
+            )}
+            {canRetry && (
+              <div className="mt-4 flex flex-col gap-2 md:items-end">
+                <button type="button" onClick={retry} disabled={awaitingRetry} className="btn btn-primary">
+                  <Wrench />
+                  {awaitingRetry ? "Empezando…" : "Diagnosticar y reparar"}
+                </button>
+                {retryError && <p className="max-w-xs text-[13px] text-bad md:text-right" role="alert">{retryError}</p>}
+              </div>
             )}
           </div>
         </div>
@@ -191,6 +236,7 @@ export function IncidentView({ source }: { source: IncidentSource }) {
         <ol className="flex flex-col gap-3 border-t border-line px-5 py-4 sm:grid sm:grid-cols-7 sm:gap-0 sm:px-3 md:px-5" aria-label="Etapas">
           {STAGES.map((s, i) => {
             const done = !failed && !review && (i < stageIndex || verified);
+            const current = paused && i === stageIndex;
             const active = working && i === stageIndex;
             return (
               <li key={s.id} className="relative flex items-center gap-3 sm:flex-col sm:gap-2 sm:text-center" aria-current={active ? "step" : undefined}>
@@ -202,12 +248,12 @@ export function IncidentView({ source }: { source: IncidentSource }) {
                 )}
                 <span
                   className={`relative grid h-[23px] w-[23px] place-items-center rounded-full text-[11px] font-medium tabular transition-colors ${
-                    done ? "bg-accent-solid text-accent-fg" : active ? "border-2 border-accent bg-surface text-accent" : "border border-line-2 bg-surface text-fg-3"
+                    done ? "bg-accent-solid text-accent-fg" : active ? "border-2 border-accent bg-surface text-accent" : current ? "border-2 border-warn bg-surface text-warn" : "border border-line-2 bg-surface text-fg-3"
                   }`}
                 >
-                  {done ? <Check className="h-3 w-3" strokeWidth={3} /> : active ? <span className="live-dot h-2 w-2 rounded-full bg-accent" /> : i + 1}
+                  {done ? <Check className="h-3 w-3" strokeWidth={3} /> : active ? <span className="live-dot h-2 w-2 rounded-full bg-accent" /> : current ? <PauseCircle className="h-3 w-3" strokeWidth={2.5} /> : i + 1}
                 </span>
-                <span className={`text-[13px] leading-tight sm:text-[12px] ${active ? "font-medium text-fg" : done ? "text-fg-2" : "text-fg-3"}`}>{s.label}</span>
+                <span className={`text-[13px] leading-tight sm:text-[12px] ${active || current ? "font-medium text-fg" : done ? "text-fg-2" : "text-fg-3"}`}>{s.label}</span>
               </li>
             );
           })}
@@ -224,8 +270,19 @@ export function IncidentView({ source }: { source: IncidentSource }) {
         {failed && (
           <p className="flex items-center gap-2 border-t border-line bg-bad-bg px-5 py-3 text-[14px] font-medium text-bad md:px-6">
             <XCircle className="h-4 w-4 shrink-0" />
-            Fixie se detuvo de forma segura. Una persona debe revisar este incidente.
+            {failNote ? `Fixie se detuvo: ${plain(failNote.text).split("\n")[0]}` : "Fixie se detuvo de forma segura antes de tocar tu código."}
           </p>
+        )}
+        {paused && (
+          <div className="flex flex-col gap-2 border-t border-line bg-warn-bg px-5 py-3 text-[14px] text-warn sm:flex-row sm:items-center sm:justify-between md:px-6">
+            <p className="flex items-center gap-2 font-medium">
+              <PauseCircle className="h-4 w-4 shrink-0" />
+              {pauseNote ? plain(pauseNote.text) : "En pausa por el límite de consumo de tu plan."}
+            </p>
+            <Link href="/uso" className="shrink-0 text-[13px] font-medium underline underline-offset-2">
+              Ver mi consumo
+            </Link>
+          </div>
         )}
         {review && (
           <p className="flex items-center gap-2 border-t border-line bg-warn-bg px-5 py-3 text-[14px] font-medium text-warn md:px-6">
@@ -283,12 +340,16 @@ export function IncidentView({ source }: { source: IncidentSource }) {
               <div className="step-in text-[14px] leading-relaxed">
                 {plain(diagnosis.text)
                   .split("\n\n")
-                  .map((para) => (
-                    <p key={para} className="[&:not(:first-child)]:mt-2">
+                  .map((para, i) => (
+                    <p key={i} className="[&:not(:first-child)]:mt-2">
                       {para}
                     </p>
                   ))}
               </div>
+            ) : paused || failed || review ? (
+              <p className="text-[14px] text-fg-3">
+                {paused ? "En pausa. Fixie busca la causa en cuanto se renueven tus créditos." : "Fixie no llegó a un diagnóstico."}
+              </p>
             ) : (
               <div className="flex flex-col gap-2" aria-label="Fixie busca la causa">
                 <span className="skeleton h-4 w-5/6" />

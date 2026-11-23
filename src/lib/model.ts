@@ -45,6 +45,11 @@ export const STEP_KINDS = [
   "merged",
   "verified",
   "failed",
+  // Límite de consumo del plan: el trabajo se detiene y se retoma cuando se renuevan los créditos.
+  "paused",
+  "resumed",
+  // Reintento pedido por el usuario: lo anterior queda como historia y el ciclo empieza de nuevo.
+  "retried",
 ] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
@@ -58,15 +63,23 @@ export type StepData = {
   path?: string;
   /** Puntaje del re-análisis en producción (reparaciones). */
   score?: number;
+  /** Pausa por límite: qué trabajo retomar y desde cuándo hay créditos. */
+  stage?: PausedStage;
+  feedback?: string;
+  resumeAt?: string;
 };
+export type PausedStage = "diagnose" | "repair" | "review" | "retry";
 export type Step = { kind: StepKind; text: string; data: StepData; at: string };
 
 export const MAX_ROUNDS = 3;
 
+/** Tras el merge, cuánto se espera a que producción muestre el commit antes de pedir revisión humana. */
+export const DEPLOY_TIMEOUT_MS = 30 * 60_000;
+
 // ── Etapas para la UI ─────────────────────────────────────────
 
 export const STAGES = ["detectado", "diagnosticando", "reproduciendo", "arreglando", "revisando", "desplegando", "verificado"] as const;
-export type Stage = (typeof STAGES)[number] | "fallido" | "revision";
+export type Stage = (typeof STAGES)[number] | "fallido" | "revision" | "pausado";
 
 const STAGE_OF: Partial<Record<StepKind, (typeof STAGES)[number]>> = {
   detected: "detectado",
@@ -92,11 +105,27 @@ const STAGE_OF: Partial<Record<StepKind, (typeof STAGES)[number]>> = {
   verified: "verificado",
 };
 
-export function deriveStage(steps: Step[]): Stage {
+/** Los pasos del intento actual: desde el último reintento (lo anterior es historia). */
+export function currentAttempt(steps: Step[]): Step[] {
+  const i = steps.findLastIndex((s) => s.kind === "retried");
+  return i === -1 ? steps : steps.slice(i);
+}
+
+/**
+ * El último paso del ciclo. "recurred" lo publica la ingesta en cualquier
+ * momento (también durante una pausa), así que no cuenta como avance.
+ */
+export function lastProgress(steps: Step[]): Step | undefined {
+  return steps.findLast((s) => s.kind !== "recurred");
+}
+
+export function deriveStage(all: Step[]): Stage {
+  const steps = currentAttempt(all);
   const kinds = new Set(steps.map((s) => s.kind));
   if (kinds.has("verified")) return "verificado";
   if (kinds.has("failed")) return "fallido";
   if (kinds.has("needs_review") || kinds.has("not_reproduced")) return "revision";
+  if (lastProgress(steps)?.kind === "paused") return "pausado";
   for (let i = steps.length - 1; i >= 0; i--) {
     const stage = STAGE_OF[steps[i].kind];
     if (stage) return stage;
@@ -106,7 +135,7 @@ export function deriveStage(steps: Step[]): Stage {
 
 /** Ronda actual del ciclo arreglar → revisar (1 = primer intento). */
 export function currentRound(steps: Step[]): number {
-  return Math.max(1, ...steps.map((s) => s.data.round ?? 1));
+  return Math.max(1, ...currentAttempt(steps).map((s) => s.data.round ?? 1));
 }
 
 /** Una reparación de hallazgos (pentesting, conversión o Lighthouse) en vez de un error. */
@@ -148,7 +177,8 @@ export type Incident = {
 
 export type PullFile = { filename: string; status: string; additions: number; deletions: number; patch?: string };
 
-export type IncidentSummary = { number: number; title: string; createdAt: string; open: boolean };
+/** stopped: Fixie se detuvo sin arreglarlo (cerrado como not_planned). */
+export type IncidentSummary = { number: number; title: string; createdAt: string; open: boolean; stopped?: boolean };
 /** outcome: cómo terminó (completed = mergeado; not_planned = falló o quedó para un humano). */
 export type RepairSummary = IncidentSummary & { kind: RepairKind; findingIds: string[]; outcome: "open" | "completed" | "not_planned" };
 

@@ -3,7 +3,6 @@
 import {
   Check,
   ChevronRight,
-  CircleAlert,
   CircleCheck,
   Globe,
   Loader2,
@@ -18,6 +17,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import type { RepairSummary } from "@/lib/model";
 import type { Finding, ScanKind, ScanResult, Severity } from "@/lib/scans/common";
+import { DEFAULT_SHANNON_MODEL, SHANNON_MODELS, shannonModel, type ShannonModelId } from "@/lib/shannon-models";
 import { IncidentView } from "../../incident-view";
 import { timeAgo } from "../../time";
 import {
@@ -28,6 +28,7 @@ import {
   verifyOwnershipAction,
   type ActionState,
 } from "../actions";
+import { keepFields, Note } from "../ui";
 
 export type ScanView = {
   status: ScanResult["status"];
@@ -42,7 +43,8 @@ const SEVERITY: Record<
   Severity,
   { label: string; cls: string; order: number }
 > = {
-  critico: { label: "Crítico", cls: "bg-bad text-white", order: 0 },
+  // text-bg y no text-white: en oscuro el rojo es claro y el blanco encima no se lee.
+  critico: { label: "Crítico", cls: "bg-bad text-bg", order: 0 },
   alto: { label: "Alto", cls: "bg-bad-bg text-bad", order: 1 },
   medio: { label: "Medio", cls: "bg-warn-bg text-warn", order: 2 },
   bajo: { label: "Bajo", cls: "bg-surface-2 text-fg-2", order: 3 },
@@ -121,30 +123,6 @@ function Rich({ text }: { text: string }) {
   );
 }
 
-function Note({ state }: { state: ActionState }) {
-  if (state?.error)
-    return (
-      <p
-        role="alert"
-        className="flex items-start gap-2 rounded-lg bg-bad-bg px-3 py-2.5 text-[13px] text-bad"
-      >
-        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-        {state.error}
-      </p>
-    );
-  if (state?.message)
-    return (
-      <p
-        role="status"
-        className="flex items-start gap-2 rounded-lg bg-ok-bg px-3 py-2.5 text-[13px] text-ok"
-      >
-        <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" />
-        {state.message}
-      </p>
-    );
-  return null;
-}
-
 export function ScanPanel({
   projectId,
   kind,
@@ -193,8 +171,12 @@ export function ScanPanel({
       else next.add(id);
       return next;
     });
+  // Solo cuenta lo elegido que sigue en el análisis actual: tras analizar de nuevo,
+  // un id que ya no aparece no debe aplicarse ni descuadrar "Elegir todos".
+  const chosen = actionable.filter((f) => picked.has(f.id)).map((f) => f.id);
+  const allChosen = chosen.length === actionable.length;
   const [applyState, apply, applying] = useActionState<ActionState, FormData>(
-    () => applyChosenAction(projectId, [...picked]),
+    () => applyChosenAction(projectId, chosen),
     null,
   );
 
@@ -245,7 +227,10 @@ export function ScanPanel({
                 >
                   {scan.summary}
                 </span>
-                <span className="text-fg-3" suppressHydrationWarning> · {timeAgo(scan.createdAt)}</span>
+                <span className="text-fg-3">
+                  {" · "}
+                  <span suppressHydrationWarning>{timeAgo(scan.createdAt)}</span>
+                </span>
                 {running && typeof scan.meta.run === "string" && (
                   <a href={scan.meta.run} target="_blank" rel="noreferrer" className="ml-2 font-medium text-accent hover:underline">
                     Ver en GitHub Actions
@@ -317,7 +302,7 @@ export function ScanPanel({
         <VerifyCallout projectId={projectId} />
       )}
 
-      {needsSetup && <DeepSetup projectId={projectId} />}
+      {needsSetup && <DeepSetup projectId={projectId} setup={scan?.meta} />}
 
       {scan?.status === "ok" && (!choose || repair?.open) && (
         <RepairSection projectId={projectId} kind={kind} repair={repair} pending={actionable.length} />
@@ -391,7 +376,7 @@ export function ScanPanel({
                           aria-label={`Aplicar: ${f.title}`}
                           checked={picked.has(f.id)}
                           onChange={() => toggle(f.id)}
-                          className="h-4 w-4 accent-[var(--accent)]"
+                          className="h-4 w-4 accent-[var(--accent-solid)]"
                         />
                       )}
                     </span>
@@ -430,18 +415,18 @@ export function ScanPanel({
             <form action={apply} className="sticky bottom-0 flex flex-col gap-3 border-t border-line bg-surface px-5 py-4 sm:flex-row sm:items-center">
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-medium tabular">
-                  {picked.size === 0 ? "Elige qué cambios aplicar" : `${picked.size} ${picked.size === 1 ? "cambio elegido" : "cambios elegidos"}`}
+                  {chosen.length === 0 ? "Elige qué cambios aplicar" : `${chosen.length} ${chosen.length === 1 ? "cambio elegido" : "cambios elegidos"}`}
                 </p>
                 <p className="mt-0.5 text-[13px] text-fg-2">Fixie los prueba en el entorno de pruebas antes de publicarlos. Lo que no marques no se toca.</p>
               </div>
               <button
                 type="button"
-                onClick={() => setPicked(picked.size === actionable.length ? new Set() : new Set(actionable.map((f) => f.id)))}
+                onClick={() => setPicked(allChosen ? new Set() : new Set(actionable.map((f) => f.id)))}
                 className="btn btn-ghost btn-sm"
               >
-                {picked.size === actionable.length ? "Quitar todos" : "Elegir todos"}
+                {allChosen ? "Quitar todos" : "Elegir todos"}
               </button>
-              <button disabled={applying || picked.size === 0} className="btn btn-primary">
+              <button disabled={applying || chosen.length === 0} className="btn btn-primary">
                 {applying ? <Loader2 className="animate-spin" /> : <Wrench />}
                 {applying ? "Aplicando…" : "Aplicar cambios"}
               </button>
@@ -535,40 +520,75 @@ function CopyDiff({ copy }: { copy: { from: string; to: string } }) {
  * Activar el pentest profundo: la clave del modelo se guarda cifrada como
  * secreto del repo en GitHub (Fixie no la guarda) y se instala el workflow.
  */
-function DeepSetup({ projectId }: { projectId: string }) {
+function DeepSetup({ projectId, setup }: { projectId: string; setup?: Record<string, unknown> }) {
   const [state, enable, pending] = useActionState<ActionState, FormData>(enableDeepAction.bind(null, projectId), null);
+  const saved = shannonModel(typeof setup?.model === "string" ? setup.model : null);
+  const [modelId, setModelId] = useState<ShannonModelId>(saved?.id ?? DEFAULT_SHANNON_MODEL);
+  const model = shannonModel(modelId) ?? SHANNON_MODELS[0];
+  const keySaved = setup?.secret === true && saved?.id === modelId;
   return (
     <section className="card flex flex-col gap-5 p-5 md:flex-row md:gap-8">
       <div className="md:w-[38%] md:shrink-0">
-        <p className="text-[14px] font-semibold">Activar el pentest profundo</p>
+        <p className="text-[14px] font-semibold">{setup?.outdated ? "Actualizar el pentest profundo" : "Activar el pentest profundo"}</p>
         <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-4 text-[13px] leading-relaxed text-fg-2">
           <li>Fixie instala un workflow en tu repo con un PR.</li>
           <li>La clave del modelo se guarda cifrada como secreto de GitHub. Fixie no la guarda.</li>
-          <li>Cada semana, Shannon ataca una copia de tu app dentro de GitHub Actions y Fixie repara lo que logre explotar.</li>
+          <li>
+            Cada semana, Fixie arma solo un entorno de pruebas dentro de GitHub Actions: una copia de tu app con una base desechable (la estructura de la tuya, sin ningún dato),
+            variables generadas y, si usas Supabase, una cuenta de prueba.
+          </li>
+          <li>Shannon ataca esa copia, nunca producción, y Fixie repara lo que logre explotar.</li>
         </ol>
         <p className="mt-3 text-[12px] leading-relaxed text-fg-3">
-          Cada corrida usa tokens de tu proveedor de IA y puede tardar horas. Necesita un repo privado.
+          La corrida se cobra en tu cuenta del proveedor de IA, no en tus créditos de Fixie. Tarda de una a varias horas y necesita un repo privado.
         </p>
       </div>
-      <form action={enable} className="flex min-w-0 flex-1 flex-col gap-4">
+      <form onSubmit={keepFields(enable)} className="flex min-w-0 flex-1 flex-col gap-4">
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1.5 text-[13px] font-medium">Modelo</legend>
+          <input type="hidden" name="model" value={model.id} />
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
+            {SHANNON_MODELS.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                aria-pressed={m.id === model.id}
+                onClick={() => setModelId(m.id)}
+                className={`rounded-lg border px-3 py-2 text-left transition-colors ${m.id === model.id ? "border-accent bg-accent-soft" : "border-line hover:bg-surface-2"}`}
+              >
+                <span className="flex items-center gap-2 text-[13px] font-medium">
+                  {m.label}
+                  {m.id === DEFAULT_SHANNON_MODEL && <span className="badge bg-surface-2 text-fg-2">Recomendado</span>}
+                </span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-fg-3">{m.note}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium">Clave del proveedor de IA</span>
-          <input name="apiKey" type="password" autoComplete="off" spellCheck={false} placeholder="sk-ant-…" className="input font-mono" />
-          <span className="text-[12px] text-fg-3">Anthropic por defecto. Si ya la guardaste antes, déjalo vacío.</span>
+          <span className="text-[13px] font-medium">Clave de {model.label.replace(/ \(.*\)$/, "")}</span>
+          <input name="apiKey" type="password" autoComplete="off" spellCheck={false} placeholder={keySaved ? "Guardada en tu repo" : model.keyHint} className="input font-mono" />
+          <span className="text-[12px] text-fg-3">{keySaved ? "Ya está guardada. Déjalo vacío para conservarla." : "Se guarda solo en tu repo, cifrada."}</span>
         </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium">
-            Variables del entorno de pruebas <span className="font-normal text-fg-3">(opcional)</span>
-          </span>
-          <textarea
-            name="testEnv"
-            rows={3}
-            spellCheck={false}
-            placeholder={"DATABASE_URL=postgres://…/pruebas\nNEXT_PUBLIC_SUPABASE_URL=…"}
-            className="input min-h-[84px] py-2 font-mono text-[12px]"
-          />
-          <span className="text-[12px] text-fg-3">Las que tu app necesita para arrancar. Usa una base de datos de pruebas, nunca la de producción.</span>
-        </label>
+        <details className="group rounded-lg border border-line">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[13px] text-fg-2 [&::-webkit-details-marker]:hidden">
+            Claves de prueba de servicios externos (opcional)
+            <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
+          </summary>
+          <label className="flex flex-col gap-1.5 border-t border-line p-3">
+            <span className="text-[12px] text-fg-3">
+              Fixie ya arma la base y las variables. Solo si quieres que Shannon pruebe también pagos o correos, pega sus claves de prueba.
+            </span>
+            <textarea
+              name="testEnv"
+              rows={2}
+              spellCheck={false}
+              placeholder={"STRIPE_SECRET_KEY=sk_test_…"}
+              className="input min-h-[64px] py-2 font-mono text-[12px]"
+            />
+            <span className="text-[12px] text-fg-3">Fixie rechaza las que apunten a producción.</span>
+          </label>
+        </details>
         <div className="flex flex-wrap items-center gap-3">
           <button disabled={pending} className="btn btn-primary">
             {pending ? <Loader2 className="animate-spin" /> : <ShieldAlert />}
@@ -622,10 +642,19 @@ function RepairSection({ projectId, kind, repair, pending }: { projectId: string
           Fixie reproduce cada hallazgo con una prueba, lo repara, el revisor intenta romperlo y, tras el merge, vuelve a analizar producción.
         </p>
       </div>
-      <button type="button" onClick={() => setSimAt(Date.now())} className="btn btn-ghost btn-sm">
-        <Play />
-        {simAt ? "Repetir simulación" : "Ver simulación"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        {/* Sin esto, tras ver la simulación no había forma de volver a la reparación real sin recargar. */}
+        {simAt && repair && (
+          <button type="button" onClick={() => setSimAt(null)} className="btn btn-ghost btn-sm">
+            <Wrench />
+            Ver la reparación real
+          </button>
+        )}
+        <button type="button" onClick={() => setSimAt(Date.now())} className="btn btn-ghost btn-sm">
+          <Play />
+          {simAt ? "Repetir simulación" : "Ver simulación"}
+        </button>
+      </div>
     </div>
   );
 

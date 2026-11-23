@@ -1,4 +1,4 @@
-import { Bug, Check, ChevronRight, Gauge, Github, Globe, MousePointerClick, Settings, ShieldCheck } from "lucide-react";
+import { Bug, Check, ChevronRight, Gauge, Github, Globe, ListChecks, MousePointerClick, Settings, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
@@ -8,12 +8,14 @@ import { listIncidents, listRepairs } from "@/lib/incidents";
 import { getOwnedProject, listBackups, projectContext } from "@/lib/projects";
 import { latestScans, refreshDeep, type ScanRow } from "@/lib/scans";
 import type { ScanKind } from "@/lib/scans/common";
+import { coversKnownVulns, KNOWN_VULNS_UPSELL } from "@/lib/plans";
 import { requireUserRow } from "@/lib/session";
 import { Console } from "../../console";
-import { SiteHeader } from "../../site-header";
+import { AppShell } from "../../app-shell";
 import { SNIPPET } from "../../snippet";
 import { timeAgo } from "../../time";
 import { DatabasePanel, InstallPanel, SettingsPanel } from "./panels";
+import { FullReview } from "./full-review";
 import { ScanPanel, type ScanView } from "./scan-panel";
 
 const TABS = [
@@ -21,6 +23,7 @@ const TABS = [
   { id: "pentesting", icon: ShieldCheck, label: "Pentesting", desc: "Qué tan segura es tu app, por fuera, por dentro y en sus dependencias. Fixie repara lo que encuentra con un PR probado." },
   { id: "conversion", icon: MousePointerClick, label: "Conversión", desc: "Lo que hace que un visitante compre, se registre o te escriba. Fixie propone; tú eliges qué cambiar." },
   { id: "lighthouse", icon: Gauge, label: "Lighthouse", desc: "La auditoría de Google en móvil y escritorio. Si algo baja de 90, Fixie lo sube." },
+  { id: "completa", icon: ListChecks, label: "Revisión completa", desc: "Las 4 pruebas con un clic. Fixie repara solo lo que se arregla con código y lo publica tras las pruebas y el revisor, como siempre." },
 ] as const;
 type TabId = (typeof TABS)[number]["id"] | "ajustes";
 
@@ -28,8 +31,7 @@ const KIND: Record<"pentesting" | "conversion" | "lighthouse", ScanKind> = { pen
 
 export default function ProjectPage({ params, searchParams }: PageProps<"/proyectos/[id]">) {
   return (
-    <>
-      <SiteHeader />
+    <AppShell>
       <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col px-4 pb-20 pt-8 md:px-6">
         <Suspense
           fallback={
@@ -43,7 +45,7 @@ export default function ProjectPage({ params, searchParams }: PageProps<"/proyec
           <ProjectDashboard params={params} searchParams={searchParams} />
         </Suspense>
       </main>
-    </>
+    </AppShell>
   );
 }
 
@@ -77,13 +79,28 @@ async function ProjectDashboard({ params, searchParams }: { params: Promise<{ id
   // La reparación más reciente de cada análisis (la lista viene de la más nueva a la más vieja).
   const latestRepair = (kind: ScanKind) => repairs.find((r) => r.kind === kind) ?? null;
   const open = incidents?.filter((i) => i.open).length ?? null;
+  // Un error detenido sigue sin arreglar hasta que un incidente posterior del mismo error se arregla.
+  // Se cuentan errores distintos, no cada vez que ocurrieron.
+  const stopped = new Set(
+    incidents?.filter((i) => i.stopped && !incidents.some((j) => j.number > i.number && j.title === i.title && !j.open && !j.stopped)).map((i) => i.title),
+  ).size;
 
+  const reviewKinds = ["errors", "pentest", "conversion", "lighthouse"] as const;
   const status = (t: (typeof TABS)[number]["id"]): Status => {
+    if (t === "completa") {
+      if (reviewKinds.some((k) => latestRepair(k)?.open)) return { text: "Reparando", cls: "bg-accent-soft text-accent", title: "Fixie está reparando lo que encontró", live: true };
+      const scores = reviewKinds.map((k) => scans[k]?.score).filter((n): n is number => typeof n === "number");
+      if (scores.length === 0) return { text: "Sin analizar", cls: "bg-surface-2 text-fg-3", title: "Todavía no corres las 4 pruebas" };
+      const worst = Math.min(...scores);
+      const cls = worst >= 90 ? "bg-ok-bg text-ok" : worst >= 50 ? "bg-warn-bg text-warn" : "bg-bad-bg text-bad";
+      return { text: `${worst}`, cls, title: `El puntaje más bajo de las ${scores.length} pruebas` };
+    }
     if (t === "errores") {
       if (open === null) return { text: "Sin acceso", cls: "bg-surface-2 text-fg-3", title: "No pude leer el repo" };
       if (latestRepair("errors")?.open) return { text: "Reparando", cls: "bg-accent-soft text-accent", title: "Fixie está reparando los errores de la revisión diaria", live: true };
-      return open > 0
-        ? { text: `${open} ${open === 1 ? "abierto" : "abiertos"}`, cls: "bg-bad-bg text-bad", title: "Incidentes abiertos" }
+      if (open > 0) return { text: `${open} ${open === 1 ? "abierto" : "abiertos"}`, cls: "bg-bad-bg text-bad", title: "Incidentes abiertos" };
+      return stopped > 0
+        ? { text: `${stopped} ${stopped === 1 ? "detenido" : "detenidos"}`, cls: "bg-warn-bg text-warn", title: "Errores que Fixie no pudo arreglar: ábrelos y pulsa Diagnosticar y reparar" }
         : { text: "Sano", cls: "bg-ok-bg text-ok", title: "Sin incidentes abiertos", check: true };
     }
     const s = scans[KIND[t]];
@@ -113,7 +130,19 @@ async function ProjectDashboard({ params, searchParams }: { params: Promise<{ id
       </nav>
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="truncate text-[28px] font-semibold tracking-[-0.025em]">{project.name}</h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="min-w-0 truncate text-[28px] font-semibold tracking-[-0.025em]">{project.name}</h1>
+            {coversKnownVulns(user.plan) && (
+              <Link
+                href={`/proyectos/${project.id}?tab=pentesting`}
+                className="badge shrink-0 bg-accent-soft text-accent hover:opacity-90"
+                title="Fixie revisa tus dependencias cada 15 minutos contra las vulnerabilidades conocidas (OSV y el catálogo CISA KEV) y las actualiza en cuanto existe una versión segura."
+              >
+                <ShieldCheck />
+                Cobertura de vulnerabilidades conocidas
+              </Link>
+            )}
+          </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-fg-2">
             <a href={`https://github.com/${project.repo}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded hover:text-fg">
               <Github className="h-3.5 w-3.5" />
@@ -133,21 +162,21 @@ async function ProjectDashboard({ params, searchParams }: { params: Promise<{ id
         </Link>
       </div>
 
-      {/* Las 4 categorías */}
-      <nav className="mt-8 border-line sm:border-b" aria-label="Categorías">
-        <ul className="grid grid-cols-2 gap-1.5 sm:flex sm:gap-1">
+      {/* Las categorías */}
+      <nav className="mt-8 border-line xl:border-b" aria-label="Categorías">
+        <ul className="grid grid-cols-2 gap-1.5 md:grid-cols-5 xl:flex xl:gap-1">
           {TABS.map((t) => {
             const s = status(t.id);
             const active = tab === t.id;
             const Icon = t.icon;
             return (
-              <li key={t.id}>
+              <li key={t.id} className={t.id === "completa" ? "col-span-2 md:col-span-1" : undefined}>
                 <Link
                   href={`?tab=${t.id}`}
                   scroll={false}
                   aria-current={active ? "page" : undefined}
-                  className={`relative flex flex-col items-start gap-1.5 rounded-lg border px-3 py-2.5 sm:flex-row sm:items-center sm:gap-2 text-[14px] font-medium transition-colors sm:rounded-b-none sm:rounded-t-md sm:border-0 sm:pb-3 sm:pt-2 ${
-                    active ? "border-accent bg-accent-soft text-fg sm:bg-transparent" : "border-line text-fg-2 hover:text-fg"
+                  className={`relative flex flex-col items-start gap-1.5 rounded-lg border px-3 py-2.5 xl:flex-row xl:items-center xl:gap-2 text-[14px] font-medium transition-colors xl:rounded-b-none xl:rounded-t-md xl:border-0 xl:pb-3 xl:pt-2 ${
+                    active ? "border-accent bg-accent-soft text-fg xl:bg-transparent" : "border-line text-fg-2 hover:text-fg"
                   }`}
                 >
                   <span className="flex items-center gap-2">
@@ -159,7 +188,7 @@ async function ProjectDashboard({ params, searchParams }: { params: Promise<{ id
                     {s.live && <span className="live-dot h-1.5 w-1.5 rounded-full bg-current" aria-hidden />}
                     {s.text}
                   </span>
-                  {active && <span className="absolute inset-x-2 bottom-0 hidden h-0.5 rounded-full bg-accent sm:block" aria-hidden />}
+                  {active && <span className="absolute inset-x-2 bottom-0 hidden h-0.5 rounded-full bg-accent xl:block" aria-hidden />}
                 </Link>
               </li>
             );
@@ -199,6 +228,27 @@ async function ProjectDashboard({ params, searchParams }: { params: Promise<{ id
           </div>
         )}
 
+        {tab === "completa" && (
+          <FullReview
+            projectId={project.id}
+            hasUrl={!!project.app_url}
+            rows={(
+              [
+                ["errores", "errors"],
+                ["pentesting", "pentest"],
+                ["conversion", "conversion"],
+                ["lighthouse", "lighthouse"],
+              ] as const
+            ).map(([id, kind]) => ({
+              id,
+              score: scans[kind]?.score ?? null,
+              summary: scans[kind]?.summary ?? null,
+              createdAt: scans[kind]?.created_at ?? null,
+              repairing: !!latestRepair(kind)?.open,
+            }))}
+          />
+        )}
+
         {(tab === "pentesting" || tab === "conversion" || tab === "lighthouse") && (
           <ScanPanel
             key={tab}
@@ -228,16 +278,41 @@ async function ProjectDashboard({ params, searchParams }: { params: Promise<{ id
 
         {tab === "pentesting" && (
           <section className="mt-12 flex flex-col gap-4" aria-labelledby="deps-title">
-            <SectionTitle id="deps-title" title="Dependencias vulnerables" badge="Vigilancia 24/7" live />
-            <ScanPanel
-              key="deps"
-              projectId={project.id}
-              kind="deps"
-              scan={toView(scans.deps)}
-              appUrl={project.app_url}
-              verified={!!project.verified_at}
-              repair={latestRepair("deps")}
-            />
+            {coversKnownVulns(user.plan) ? (
+              <>
+                <SectionTitle id="deps-title" title="Dependencias vulnerables" badge="Vigilancia 24/7" live />
+                <ScanPanel
+                  key="deps"
+                  projectId={project.id}
+                  kind="deps"
+                  scan={toView(scans.deps)}
+                  appUrl={project.app_url}
+                  verified={!!project.verified_at}
+                  repair={latestRepair("deps")}
+                />
+              </>
+            ) : (
+              <>
+                <SectionTitle id="deps-title" title="Dependencias vulnerables" />
+                <div className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between md:p-6">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+                      <ShieldCheck className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-[15px] font-medium">{KNOWN_VULNS_UPSELL}</p>
+                      <p className="mt-1 max-w-xl text-[14px] text-fg-2">
+                        Fixie revisa tus dependencias cada 15 minutos contra las vulnerabilidades conocidas (OSV y el catálogo CISA KEV) y las actualiza con un PR probado en
+                        cuanto existe una versión segura.
+                      </p>
+                    </div>
+                  </div>
+                  <Link href="/uso" className="btn btn-outline shrink-0">
+                    Ver planes
+                  </Link>
+                </div>
+              </>
+            )}
           </section>
         )}
 
@@ -267,16 +342,18 @@ async function ProjectDashboard({ params, searchParams }: { params: Promise<{ id
   );
 }
 
-function SectionTitle({ id, title, badge, live }: { id: string; title: string; badge: string; live?: boolean }) {
+function SectionTitle({ id, title, badge, live }: { id: string; title: string; badge?: string; live?: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <h2 id={id} className="text-[18px] font-semibold tracking-tight">
         {title}
       </h2>
-      <span className={`badge ${live ? "bg-accent-soft text-accent" : "bg-surface-2 text-fg-2"}`}>
-        {live && <span className="live-dot h-1.5 w-1.5 rounded-full bg-current" aria-hidden />}
-        {badge}
-      </span>
+      {badge && (
+        <span className={`badge ${live ? "bg-accent-soft text-accent" : "bg-surface-2 text-fg-2"}`}>
+          {live && <span className="live-dot h-1.5 w-1.5 rounded-full bg-current" aria-hidden />}
+          {badge}
+        </span>
+      )}
     </div>
   );
 }

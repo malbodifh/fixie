@@ -14,7 +14,8 @@ export function encrypt(plain: string): string {
 
 export function decrypt(sealed: string): string {
   const [iv, tag, data] = sealed.split(".").map((p) => Buffer.from(p, "base64url"));
-  const decipher = createDecipheriv("aes-256-gcm", key(), iv);
+  // Etiqueta de 16 bytes fija: GCM con etiquetas cortas deja falsificar el texto cifrado.
+  const decipher = createDecipheriv("aes-256-gcm", key(), iv, { authTagLength: 16 });
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(data), decipher.final()]).toString("utf8");
 }

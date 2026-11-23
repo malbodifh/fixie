@@ -88,21 +88,18 @@ export async function findProjectByIngestKey(key: string): Promise<ProjectRow | 
   return data ?? null;
 }
 
-/** Todos los proyectos: la vigilancia de dependencias revisa cada repo. */
+/** Sin filtro de dueño: solo para los crons y el motor, que ya validaron su secreto. */
 export async function getProjectById(id: string): Promise<ProjectRow | null> {
   const { data } = await db().from("projects").select("*").eq("id", id).maybeSingle<ProjectRow>();
   return data ?? null;
 }
 
+/** Todos los proyectos: la vigilancia de dependencias y la revisión diaria recorren cada repo. */
 export async function listAllProjects(): Promise<ProjectRow[]> {
   return must(await db().from("projects").select("*"));
 }
 
-/** Proyectos con URL de producción: los que la revisión semanal analiza y repara. */
-export async function listProjectsWithUrl(): Promise<ProjectRow[]> {
-  return must(await db().from("projects").select("*").not("app_url", "is", null));
-}
-
+/** Proyectos con base conectada: el respaldo semanal. */
 export async function listProjectsWithDb(): Promise<ProjectRow[]> {
   return must(await db().from("projects").select("*").not("db_url_enc", "is", null));
 }

@@ -33,8 +33,6 @@ const SCRIPT: { t: number; kind: StepKind; text: string; data?: StepData }[] = [
   { t: 62, kind: "verified", text: "Arreglo en producción (commit `a1b2c3d`).", data: { sha: "a1b2c3d4e5f6" } },
 ];
 
-export const SIM_DURATION_S = SCRIPT.at(-1)!.t;
-
 const DIFF = [
   {
     filename: "src/lib/pricing.ts",

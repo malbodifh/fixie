@@ -1,9 +1,10 @@
-import { LogOut } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/session";
 import { FixieLogo } from "./logo";
 
+/** Encabezado de la portada. Dentro de la app, la navegación vive en la barra lateral (AppShell). */
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-bg/80 backdrop-blur-xl backdrop-saturate-150">
@@ -13,14 +14,14 @@ export function SiteHeader() {
           Fixie
         </Link>
         <Suspense fallback={<span className="skeleton h-8 w-32" aria-hidden />}>
-          <UserMenu />
+          <Entry />
         </Suspense>
       </div>
     </header>
   );
 }
 
-async function UserMenu() {
+async function Entry() {
   const user = await getCurrentUser();
   if (!user) {
     return (
@@ -30,21 +31,9 @@ async function UserMenu() {
     );
   }
   return (
-    <nav className="flex items-center gap-1" aria-label="Cuenta">
-      <Link href="/proyectos" className="btn btn-ghost btn-sm">
-        Proyectos
-      </Link>
-      <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-      {user.avatarUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={user.avatarUrl} alt="" className="h-7 w-7 rounded-full border border-line" />
-      )}
-      <span className="hidden px-1.5 text-[13px] text-fg-2 sm:inline">{user.login}</span>
-      <form action="/api/auth/logout" method="post">
-        <button className="btn btn-ghost btn-sm px-2" aria-label="Cerrar sesión" title="Cerrar sesión">
-          <LogOut />
-        </button>
-      </form>
-    </nav>
+    <Link href="/proyectos" className="btn btn-primary btn-sm">
+      Abrir Fixie
+      <ArrowRight />
+    </Link>
   );
 }

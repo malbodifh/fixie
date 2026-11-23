@@ -1,7 +1,40 @@
 "use client";
 
-import { Check, ChevronRight, Copy, Lock, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { Check, ChevronRight, CircleAlert, CircleCheck, Copy, Lock, TriangleAlert } from "lucide-react";
+import { startTransition, useState, type FormEvent } from "react";
+import type { ActionState } from "./actions";
+
+/** Resultado de una acción del servidor: error en rojo o confirmación en verde. */
+export function Note({ state }: { state: ActionState }) {
+  if (state?.error)
+    return (
+      <p role="alert" className="flex items-start gap-2 rounded-lg bg-bad-bg px-3 py-2.5 text-[13px] text-bad">
+        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+        {state.error}
+      </p>
+    );
+  if (state?.message)
+    return (
+      <p role="status" className="flex items-start gap-2 rounded-lg bg-ok-bg px-3 py-2.5 text-[13px] text-ok">
+        <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" />
+        {state.message}
+      </p>
+    );
+  return null;
+}
+
+/**
+ * onSubmit que manda el formulario a la acción sin que React lo vacíe. Con
+ * `action={fn}`, React borra los campos al terminar aunque la acción devuelva un
+ * error, y la persona pierde lo que escribió.
+ */
+export function keepFields(dispatch: (form: FormData) => void) {
+  return (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
+    startTransition(() => dispatch(form));
+  };
+}
 
 /** Variables de entorno para la app monitoreada. La clave se muestra una sola vez. */
 export function KeyReveal({ baseUrl, ingestKey }: { baseUrl: string; ingestKey: string }) {
@@ -15,7 +48,11 @@ export function KeyReveal({ baseUrl, ingestKey }: { baseUrl: string; ingestKey: 
           <button
             type="button"
             onClick={() => {
-              navigator.clipboard.writeText(text).then(() => setCopied(true));
+              // Sin permiso de portapapeles (o fuera de HTTPS) falla: no se marca como copiado.
+              navigator.clipboard.writeText(text).then(
+                () => setCopied(true),
+                () => setCopied(false),
+              );
             }}
             className="btn btn-ghost btn-sm h-7"
           >

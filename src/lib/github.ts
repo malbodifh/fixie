@@ -9,12 +9,14 @@ export class GitHubError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** El campo `message` de la respuesta de GitHub, si lo trae. */
+    readonly apiMessage: string | null = null,
   ) {
     super(message);
   }
 }
 
-async function call<T>(token: string, url: string, init: RequestInit & { raw?: boolean } = {}): Promise<T> {
+async function send(token: string, url: string, init: RequestInit & { raw?: boolean } = {}): Promise<Response> {
   const { raw, ...rest } = init;
   const res = await fetch(url.startsWith("http") ? url : `${API}${url}`, {
     ...rest,
@@ -29,10 +31,35 @@ async function call<T>(token: string, url: string, init: RequestInit & { raw?: b
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new GitHubError(`GitHub ${rest.method ?? "GET"} ${url}: ${res.status} ${text.slice(0, 300)}`, res.status);
+    let apiMessage: string | null = null;
+    try {
+      apiMessage = (JSON.parse(text) as { message?: string }).message ?? null;
+    } catch {}
+    throw new GitHubError(`GitHub ${rest.method ?? "GET"} ${url}: ${res.status} ${text.slice(0, 300)}`, res.status, apiMessage);
   }
+  return res;
+}
+
+async function call<T>(token: string, url: string, init: RequestInit & { raw?: boolean } = {}): Promise<T> {
+  const res = await send(token, url, init);
   if (res.status === 204) return undefined as T;
-  return (raw ? res.text() : res.json()) as Promise<T>;
+  return (init.raw ? res.text() : res.json()) as Promise<T>;
+}
+
+/**
+ * GET de una lista, siguiendo la paginación (encabezado Link) hasta `maxPages`.
+ * Solo sigue enlaces de la API de GitHub: el token nunca sale a otro host.
+ */
+async function callPages<T>(token: string, url: string, maxPages: number): Promise<T[]> {
+  const out: T[] = [];
+  let next: string | null = url;
+  for (let page = 0; next && page < maxPages; page++) {
+    const res = await send(token, next);
+    out.push(...((await res.json()) as T[]));
+    const link: string | null = res.headers.get("link")?.match(/<([^>]+)>;\s*rel="next"/)?.[1] ?? null;
+    next = link?.startsWith(`${API}/`) ? link : null;
+  }
+  return out;
 }
 
 // ── Cuenta del usuario (login y elegir repos) ─────────────────
@@ -87,6 +114,8 @@ export type PullRequest = {
   state: "open" | "closed";
   merged: boolean;
   merge_commit_sha: string | null;
+  /** null mientras GitHub todavía calcula si se puede mergear. */
+  mergeable?: boolean | null;
   head: { sha: string; ref: string };
   base: { ref: string };
 };
@@ -113,6 +142,10 @@ export class Repo {
 
   private gh<T>(path: string, init: RequestInit & { raw?: boolean } = {}): Promise<T> {
     return call<T>(this.token, `/repos/${this.fullName}${path}`, init);
+  }
+
+  private ghPages<T>(path: string, maxPages: number): Promise<T[]> {
+    return callPages<T>(this.token, `/repos/${this.fullName}${path}`, maxPages);
   }
 
   // Repo y archivos
@@ -165,8 +198,14 @@ export class Repo {
 
   // Issues: la base de datos de incidentes vive en el propio repo
 
-  listIncidentIssues(state: "open" | "all" = "all"): Promise<Issue[]> {
-    return this.gh<Issue[]>(`/issues?labels=${INCIDENT_LABEL}&state=${state}&per_page=50&sort=created&direction=desc`);
+  /**
+   * Issues de Fixie, más recientes primero. Los abiertos se leen todos (el motor
+   * y la deduplicación de incidentes los necesitan completos); el historial, las
+   * últimas 300. `since` filtra por última actualización.
+   */
+  listIncidentIssues(state: "open" | "closed" | "all" = "all", opts: { since?: string } = {}): Promise<Issue[]> {
+    const since = opts.since ? `&since=${encodeURIComponent(opts.since)}` : "";
+    return this.ghPages<Issue>(`/issues?labels=${INCIDENT_LABEL}&state=${state}&per_page=100&sort=created&direction=desc${since}`, state === "open" ? 10 : 3);
   }
 
   getIssue(n: number): Promise<Issue> {
@@ -181,8 +220,13 @@ export class Repo {
     return this.gh<Issue>(`/issues/${n}`, { method: "PATCH", body: JSON.stringify({ state: "closed", state_reason: "not_planned" }) });
   }
 
+  reopenIssue(n: number): Promise<Issue> {
+    return this.gh<Issue>(`/issues/${n}`, { method: "PATCH", body: JSON.stringify({ state: "open" }) });
+  }
+
+  /** Todos los comentarios (cada paso es uno; un error frecuente suma muchos "volvió a ocurrir"). */
   listComments(n: number): Promise<Comment[]> {
-    return this.gh<Comment[]>(`/issues/${n}/comments?per_page=100`);
+    return this.ghPages<Comment>(`/issues/${n}/comments?per_page=100`, 30);
   }
 
   addComment(n: number, body: string): Promise<Comment> {
@@ -195,18 +239,23 @@ export class Repo {
     return this.gh<PullRequest>("/pulls", { method: "POST", body: JSON.stringify(opts) });
   }
 
+  closePullRequest(n: number): Promise<PullRequest> {
+    return this.gh<PullRequest>(`/pulls/${n}`, { method: "PATCH", body: JSON.stringify({ state: "closed" }) });
+  }
+
   getPullRequest(n: number): Promise<PullRequest> {
     return this.gh<PullRequest>(`/pulls/${n}`);
   }
 
   listPullFiles(n: number): Promise<PullFile[]> {
-    return this.gh<PullFile[]>(`/pulls/${n}/files?per_page=50`);
+    return this.gh<PullFile[]>(`/pulls/${n}/files?per_page=100`);
   }
 
-  async mergePullRequest(n: number, title: string): Promise<string> {
+  /** Squash merge. Con `sha`, GitHub responde 409 si la rama cambió desde ese commit (no se mergea nada sin revisar). */
+  async mergePullRequest(n: number, title: string, sha?: string): Promise<string> {
     const res = await this.gh<{ sha: string }>(`/pulls/${n}/merge`, {
       method: "PUT",
-      body: JSON.stringify({ merge_method: "squash", commit_title: title }),
+      body: JSON.stringify({ merge_method: "squash", commit_title: title, ...(sha ? { sha } : {}) }),
     });
     return res.sha;
   }
@@ -242,6 +291,12 @@ export class Repo {
     return { commits: data.total_commits, files: data.files ?? [] };
   }
 
+  /** ¿`head` ya incluye el commit `ancestor`? (producción puede ir varios commits por delante del merge) */
+  async includesCommit(head: string, ancestor: string): Promise<boolean> {
+    const data = await this.gh<{ status: string }>(`/compare/${encodeURIComponent(ancestor)}...${encodeURIComponent(head)}?per_page=1`);
+    return data.status === "identical" || data.status === "ahead";
+  }
+
   // GitHub Actions: secretos, workflows y artefactos (pentest profundo)
 
   getActionsPublicKey(): Promise<{ key_id: string; key: string }> {
@@ -257,6 +312,22 @@ export class Repo {
     return this.gh(`/actions/secrets/${name}`).then(
       () => true,
       (err) => (err instanceof GitHubError && err.status === 404 ? false : Promise.reject(err)),
+    );
+  }
+
+  /** Variable de Actions (no secreta): la crea o la actualiza. */
+  async setVariable(name: string, value: string): Promise<void> {
+    await this.gh(`/actions/variables/${name}`, { method: "PATCH", body: JSON.stringify({ name, value }) }).catch((err) =>
+      err instanceof GitHubError && err.status === 404
+        ? this.gh("/actions/variables", { method: "POST", body: JSON.stringify({ name, value }) })
+        : Promise.reject(err),
+    );
+  }
+
+  async getVariable(name: string): Promise<string | null> {
+    return this.gh<{ value: string }>(`/actions/variables/${name}`).then(
+      (v) => v.value,
+      (err) => (err instanceof GitHubError && err.status === 404 ? null : Promise.reject(err)),
     );
   }
 

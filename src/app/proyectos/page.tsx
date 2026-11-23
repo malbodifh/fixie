@@ -4,14 +4,13 @@ import { Suspense } from "react";
 import { listProjects } from "@/lib/projects";
 import { requireUserRow } from "@/lib/session";
 import { Mascot } from "../mascot";
-import { SiteHeader } from "../site-header";
+import { AppShell } from "../app-shell";
 
 export const metadata = { title: "Proyectos" };
 
 export default function ProjectsPage() {
   return (
-    <>
-      <SiteHeader />
+    <AppShell>
       <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-8 px-4 pb-20 pt-10 md:px-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -34,7 +33,7 @@ export default function ProjectsPage() {
           <ProjectList />
         </Suspense>
       </main>
-    </>
+    </AppShell>
   );
 }
 

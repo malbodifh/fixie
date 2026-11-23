@@ -15,7 +15,7 @@ export function hasModelKey(): boolean {
 
 function provider() {
   if (!hasModelKey()) {
-    throw new Error("Falta la clave del modelo: agrega DEEPSEEK_API_KEY en .env.local.");
+    throw new Error("Falta la clave del modelo: agrega DEEPSEEK_API_KEY en la configuración del servidor.");
   }
   return createDeepSeek({ apiKey: process.env.DEEPSEEK_API_KEY });
 }
@@ -28,4 +28,9 @@ export function agentModel(): LanguageModel {
 /** Modelo para tareas acotadas (sugerencias de texto, revisión del diff del día). */
 export function fastModel(): LanguageModel {
   return provider()(process.env.AGENT_FAST_MODEL ?? process.env.AGENT_MODEL ?? DEFAULT_MODEL);
+}
+
+/** Nombre del modelo, para registrar el consumo. */
+export function modelName(): string {
+  return process.env.AGENT_MODEL ?? DEFAULT_MODEL;
 }

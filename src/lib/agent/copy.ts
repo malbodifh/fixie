@@ -12,10 +12,18 @@ import type { ProjectContext } from "../projects";
 const SOURCE = /^(src\/|app\/|components\/|content\/|messages\/|locales\/|lib\/).*\.(tsx|jsx|ts|js|mdx|md|json)$/;
 const MAX_FILES = 200;
 
-/** Formas en que el mismo texto puede estar escrito en el código fuente. */
-function variants(text: string): string[] {
-  return [...new Set([text, text.replace(/'/g, "&apos;"), text.replace(/'/g, "&#39;"), text.replace(/"/g, "&quot;"), text.replace(/'/g, "\\'"), text.replace(/"/g, '\\"')])];
-}
+/**
+ * Formas en que el mismo texto puede estar escrito en el código fuente. El
+ * texto nuevo se escribe con la misma forma que tenía el original.
+ */
+const ESCAPES: ((text: string) => string)[] = [
+  (t) => t,
+  (t) => t.replace(/'/g, "&apos;"),
+  (t) => t.replace(/'/g, "&#39;"),
+  (t) => t.replace(/"/g, "&quot;"),
+  (t) => t.replace(/'/g, "\\'"),
+  (t) => t.replace(/"/g, '\\"'),
+];
 
 function reproTest(changes: { path: string; from: string; to: string }[]): string {
   return `import { readFileSync } from "node:fs";
@@ -29,7 +37,8 @@ describe("textos de conversión", () => {
     it(\`\${c.path}: "\${c.to.slice(0, 40)}"\`, () => {
       const src = readFileSync(c.path, "utf8");
       expect(src).toContain(c.to);
-      expect(src).not.toContain(c.from);
+      // Si el texto nuevo contiene al anterior ("Comprar" → "Comprar ahora"), el anterior sigue apareciendo.
+      if (!c.to.includes(c.from)) expect(src).not.toContain(c.from);
     });
   }
 });
@@ -45,7 +54,12 @@ export async function applyCopyAndOpenPR(ctx: ProjectContext, issueNumber: numbe
   const head = await repo.getDefaultBranchHead();
   const paths = (await repo.listFiles(head.sha)).filter((p) => SOURCE.test(p) && !/(^|\/)(tests?|__tests__)\//.test(p)).slice(0, MAX_FILES);
   const files = new Map<string, string>();
-  await Promise.all(paths.map(async (p) => files.set(p, await repo.readFile(p, head.sha).catch(() => ""))));
+  // De a pocos: cientos de peticiones simultáneas activan el límite secundario de GitHub.
+  for (let i = 0; i < paths.length; i += 10) {
+    const batch = paths.slice(i, i + 10);
+    const texts = await Promise.all(batch.map((p) => repo.readFile(p, head.sha).catch(() => "")));
+    batch.forEach((p, j) => files.set(p, texts[j]));
+  }
 
   const changed = new Map<string, string>();
   const test: { path: string; from: string; to: string }[] = [];
@@ -54,10 +68,11 @@ export async function applyCopyAndOpenPR(ctx: ProjectContext, issueNumber: numbe
     let found = false;
     for (const [path, original] of files) {
       const current = changed.get(path) ?? original;
-      const hit = variants(from).find((v) => current.includes(v));
-      if (!hit) continue;
+      const escape = ESCAPES.find((e) => current.includes(e(from)));
+      if (!escape) continue;
       // Se escribe con la misma forma de escapar que ya usa el archivo.
-      const replacement = hit === from ? to : variants(to)[variants(from).indexOf(hit)] ?? to;
+      const hit = escape(from);
+      const replacement = escape(to);
       changed.set(path, current.split(hit).join(replacement));
       test.push({ path, from: hit, to: replacement });
       found = true;

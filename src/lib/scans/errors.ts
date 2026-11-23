@@ -2,7 +2,9 @@ import "server-only";
 import { z } from "zod";
 import { askStructured } from "../agent/ask";
 import { hasModelKey } from "../agent/model";
-import type { Repo } from "../github";
+import type { ProjectRow } from "../db";
+import { GitHubError, type Repo } from "../github";
+import { BudgetExceededError } from "../usage";
 import { fetchApp, scoreOf, summaryOf, type Finding, type ScanResult, type Severity } from "./common";
 
 /**
@@ -36,7 +38,7 @@ async function crawl(appUrl: string): Promise<Finding[]> {
   }
   const sitemap = await fetchApp(`${origin}/sitemap.xml`).catch(() => null);
   if (sitemap?.ok) {
-    for (const m of (await sitemap.text()).matchAll(/<loc>([^<]+)<\/loc>/g)) {
+    for (const m of (await sitemap.text().catch(() => "")).matchAll(/<loc>([^<]+)<\/loc>/g)) {
       try {
         const u = new URL(m[1].trim());
         if (u.origin === origin) pages.add(u.pathname);
@@ -117,16 +119,22 @@ rutas o imports rotos, estados de React mal actualizados, consultas que fallan, 
 No reportes estilo, gustos, nombres ni posibles mejoras. Si no estás seguro de que sea un bug, no lo reportes.
 Lista vacía si no hay bugs. Escribe en español.`;
 
-async function diffFindings(repo: Repo, base: string, head: string): Promise<{ findings: Finding[]; reviewed: number }> {
+type Payer = Pick<ProjectRow, "id" | "owner_id">;
+
+async function diffFindings(repo: Repo, base: string, head: string, project: Payer): Promise<{ findings: Finding[]; reviewed: number }> {
   const { files } = await repo.compare(base, head);
   const code = files.filter((x) => x.patch && /\.(tsx?|jsx?|mjs)$/.test(x.filename) && !/(^|\/)(tests?|__tests__)\//.test(x.filename));
   if (code.length === 0) return { findings: [], reviewed: 0 };
   let diff = "";
+  let included = 0;
   for (const x of code) {
     const part = `--- ${x.filename}\n${x.patch}\n`;
     if (diff.length + part.length > MAX_DIFF) break;
     diff += part;
+    included++;
   }
+  // Un solo archivo más grande que el límite: no se manda un prompt vacío al modelo.
+  if (included === 0) return { findings: [], reviewed: 0 };
   const out = await askStructured({
     name: "reportar_bugs",
     description: "Reporta los bugs encontrados en el diff (lista vacía si no hay).",
@@ -146,6 +154,7 @@ async function diffFindings(repo: Repo, base: string, head: string): Promise<{ f
     instructions: REVIEW,
     prompt: diff,
     fast: true,
+    usage: { project, kind: "daily_review" },
   });
   const findings: Finding[] = (out?.bugs ?? []).map((b) => ({
     id: `bug:${b.archivo}:${b.titulo.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
@@ -155,18 +164,31 @@ async function diffFindings(repo: Repo, base: string, head: string): Promise<{ f
     detail: `\`${b.archivo}${b.linea ? `:${b.linea}` : ""}\`. ${b.detalle}`,
     fix: "Reproducir el bug con una prueba y corregirlo.",
   }));
-  return { findings, reviewed: code.length };
+  return { findings, reviewed: included };
 }
 
-export async function runErrors(opts: { appUrl: string | null; repo: Repo; lastCommit: string | null }): Promise<ScanResult> {
+export async function runErrors(opts: { appUrl: string | null; repo: Repo; lastCommit: string | null; project: Payer }): Promise<ScanResult> {
   const head = await opts.repo.getDefaultBranchHead();
   const findings: Finding[] = [];
   if (opts.appUrl) findings.push(...(await crawl(opts.appUrl)));
   findings.push(await ciFinding(opts.repo, head.sha));
 
   let reviewed = 0;
-  if (opts.lastCommit && opts.lastCommit !== head.sha && hasModelKey()) {
-    const r = await diffFindings(opts.repo, opts.lastCommit, head.sha).catch(() => ({ findings: [], reviewed: 0 }));
+  // Si la revisión con IA no se hizo, el diff se guarda para la próxima: no se pierde ningún cambio.
+  let reviewedUpTo = head.sha;
+  let paused: string | null = null;
+  let failed = false as boolean;
+  const changed = !!opts.lastCommit && opts.lastCommit !== head.sha;
+  if (changed && hasModelKey()) {
+    const r = await diffFindings(opts.repo, opts.lastCommit!, head.sha, opts.project).catch((err: unknown) => {
+      if (err instanceof BudgetExceededError) paused = err.message;
+      else failed = true;
+      // Si el commit anterior ya no existe (force-push), compararlo fallaría siempre:
+      // se sigue desde el actual en vez de quedar atascado.
+      const gone = err instanceof GitHubError && (err.status === 404 || err.status === 422);
+      if (!gone) reviewedUpTo = opts.lastCommit!;
+      return { findings: [], reviewed: 0 };
+    });
     findings.push(...r.findings);
     reviewed = r.reviewed;
   }
@@ -175,13 +197,19 @@ export async function runErrors(opts: { appUrl: string | null; repo: Repo; lastC
     title: "Revisión con IA de los cambios del día",
     severity: "info",
     passed: true,
-    detail: !opts.lastCommit
-      ? "Primera revisión: desde mañana Fixie revisa solo lo que cambie."
-      : reviewed
-        ? `${reviewed} archivos cambiados revisados.`
-        : "Sin cambios de código desde la revisión anterior (cero tokens).",
+    detail: paused
+      ? `En pausa. ${paused}`
+      : failed
+        ? "No se pudo revisar el diff esta vez. Fixie lo vuelve a intentar en la próxima revisión."
+        : !opts.lastCommit
+          ? "Primera revisión: desde mañana Fixie revisa solo lo que cambie."
+          : reviewed
+            ? `${reviewed} archivos cambiados revisados.`
+            : changed && !hasModelKey()
+              ? "Sin modelo de IA configurado: no se revisaron los cambios."
+              : "Sin cambios de código desde la revisión anterior (cero tokens).",
   });
 
   const failing = findings.some((f) => !f.passed && f.severity !== "info");
-  return { status: "ok", score: scoreOf(findings), summary: failing ? summaryOf(findings) : "Sin errores.", findings, meta: { commit: head.sha, pages: findings.find((f) => f.id === "crawl")?.title ?? null } };
+  return { status: "ok", score: scoreOf(findings), summary: failing ? summaryOf(findings) : "Sin errores.", findings, meta: { commit: reviewedUpTo, pages: findings.find((f) => f.id === "crawl")?.title ?? null } };
 }

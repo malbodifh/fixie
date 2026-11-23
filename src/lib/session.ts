@@ -8,24 +8,28 @@ import { db, type UserRow } from "./db";
 const COOKIE = "autosana_session";
 const MAX_AGE_S = 30 * 24 * 3600;
 
-export type CurrentUser = { id: string; login: string; name: string | null; avatarUrl: string | null };
+export type CurrentUser = { id: string; login: string; name: string | null; avatarUrl: string | null; plan: UserRow["plan"] };
 
-function seal(userId: string): string {
+type Sealed = { userId: string; version: number };
+
+// La cookie lleva la versión de sesión del usuario: al cerrar sesión la versión sube
+// y toda cookie anterior (en otro dispositivo, o robada) deja de valer.
+function seal({ userId, version }: Sealed): string {
   const exp = Math.floor(Date.now() / 1000) + MAX_AGE_S;
-  const body = `${userId}.${exp}`;
+  const body = `${userId}.${version}.${exp}`;
   return `${body}.${sign(body)}`;
 }
 
-function unseal(value: string | undefined): string | null {
-  const [userId, exp, sig] = value?.split(".") ?? [];
-  if (!userId || !exp || !sig) return null;
-  if (!safeEqual(sig, sign(`${userId}.${exp}`))) return null;
-  if (Number(exp) < Date.now() / 1000) return null;
-  return userId;
+function unseal(value: string | undefined): Sealed | null {
+  const [userId, version, exp, sig, extra] = value?.split(".") ?? [];
+  if (!userId || !version || !exp || !sig || extra !== undefined) return null;
+  if (!safeEqual(sig, sign(`${userId}.${version}.${exp}`))) return null;
+  if (!/^\d+$/.test(version) || Number(exp) < Date.now() / 1000) return null;
+  return { userId, version: Number(version) };
 }
 
-export async function startSession(userId: string) {
-  (await cookies()).set(COOKIE, seal(userId), {
+export async function startSession(user: Pick<UserRow, "id" | "session_version">) {
+  (await cookies()).set(COOKIE, seal({ userId: user.id, version: user.session_version ?? 0 }), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -34,8 +38,18 @@ export async function startSession(userId: string) {
   });
 }
 
+/** Cierra la sesión en todos los dispositivos: la versión sube y las cookies emitidas antes dejan de valer. */
 export async function endSession() {
-  (await cookies()).delete(COOKIE);
+  const jar = await cookies();
+  const sealed = unseal(jar.get(COOKIE)?.value);
+  jar.delete(COOKIE);
+  if (!sealed) return;
+  // Solo si la cookie sigue vigente: una cookie vieja no puede cerrar las sesiones nuevas.
+  await db()
+    .from("users")
+    .update({ session_version: sealed.version + 1 })
+    .eq("id", sealed.userId)
+    .eq("session_version", sealed.version);
 }
 
 /** Fila completa del usuario (incluye el token cifrado). Solo para el servidor. */
@@ -43,15 +57,16 @@ export async function getUserRow(): Promise<UserRow | null> {
   const value = (await cookies()).get(COOKIE)?.value;
   // La sesión vence: comparar con la hora actual solo en tiempo de petición.
   await connection();
-  const userId = unseal(value);
-  if (!userId) return null;
-  const { data } = await db().from("users").select("*").eq("id", userId).maybeSingle<UserRow>();
-  return data ?? null;
+  const sealed = unseal(value);
+  if (!sealed) return null;
+  const { data } = await db().from("users").select("*").eq("id", sealed.userId).maybeSingle<UserRow>();
+  if (!data || (data.session_version ?? 0) !== sealed.version) return null;
+  return data;
 }
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const row = await getUserRow();
-  return row ? { id: row.id, login: row.login, name: row.name, avatarUrl: row.avatar_url } : null;
+  return row ? { id: row.id, login: row.login, name: row.name, avatarUrl: row.avatar_url, plan: row.plan ?? "free" } : null;
 }
 
 /** Para páginas y acciones privadas: sin sesión, al login. */

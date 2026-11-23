@@ -1,11 +1,10 @@
 import { after } from "next/server";
 import { cronAuthorized, unauthorized } from "@/lib/cron";
 import { kickMotor } from "@/lib/motor";
-import { getProjectById } from "@/lib/projects";
+import { getProjectById, projectContext } from "@/lib/projects";
 import { startNextRepair } from "@/lib/repairs";
 import { latestScan, refreshDeep, runScan, startDeep } from "@/lib/scans";
 import { deepSetup } from "@/lib/scans/shannon";
-import { projectContext } from "@/lib/projects";
 
 export const maxDuration = 300;
 
@@ -30,15 +29,24 @@ export async function POST(req: Request, ctx: RouteContext<"/api/cron/proyecto/[
       await runScan(project, kind).catch((err) => console.error("[diario]", project.name, kind, err));
     }
 
-    const deep = await latestScan(project.id, "pentest_deep");
-    if (deep?.status === "running") await refreshDeep(project, deep).catch(() => null);
-    else if (!deep || Date.now() - Date.parse(deep.created_at) > WEEK_MS) {
-      const setup = await deepSetup((await projectContext(project)).repo).catch(() => null);
-      if (setup?.workflow && setup.secret) await startDeep(project).catch(() => null);
+    // Cada fase falla por separado: un error en el pentest profundo no deja sin reparar ni sin motor.
+    try {
+      const deep = await latestScan(project.id, "pentest_deep");
+      if (deep?.status === "running") await refreshDeep(project, deep);
+      else if (!deep || Date.now() - Date.parse(deep.created_at) > WEEK_MS) {
+        const setup = await deepSetup((await projectContext(project)).repo);
+        if (setup.workflow && setup.secret) await startDeep(project);
+      }
+    } catch (err) {
+      console.error("[diario]", project.name, "pentest_deep", err);
     }
 
-    const job = await startNextRepair(project).catch(() => null);
-    if (job) await job();
+    try {
+      const job = await startNextRepair(project);
+      if (job) await job();
+    } catch (err) {
+      console.error("[diario]", project.name, "reparación", err);
+    }
     await kickMotor(project.id);
   });
   return Response.json({ started: true }, { status: 202 });

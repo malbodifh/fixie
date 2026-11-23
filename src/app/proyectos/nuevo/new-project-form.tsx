@@ -4,7 +4,7 @@ import { ArrowRight, CircleAlert, CircleCheck, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import { createProjectAction, type ActionState } from "../actions";
-import { DbRoleHelp, KeyReveal } from "../ui";
+import { DbRoleHelp, keepFields, KeyReveal } from "../ui";
 
 export function NewProjectForm({ repos, baseUrl }: { repos: string[]; baseUrl: string }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(createProjectAction, null);
@@ -32,15 +32,17 @@ export function NewProjectForm({ repos, baseUrl }: { repos: string[]; baseUrl: s
   }
 
   return (
-    <form action={action} className="card flex flex-col gap-6 p-6">
+    // keepFields: si la acción devuelve un error, los campos conservan lo escrito.
+    <form onSubmit={keepFields(action)} className="card flex flex-col gap-6 p-6">
       <Field label="Nombre" hint="Cómo lo verás en tu panel." htmlFor="name">
-        <input id="name" name="name" required maxLength={60} placeholder="DevShop" className="input" />
+        <input id="name" name="name" aria-describedby="name-hint" required maxLength={60} placeholder="DevShop" className="input" />
       </Field>
 
       <Field label="Repositorio de GitHub" hint="Ahí se abren los incidentes, las ramas y los PRs." htmlFor="repo">
         <input
           id="repo"
           name="repo"
+          aria-describedby="repo-hint"
           required
           list="repos"
           value={repo}
@@ -74,11 +76,11 @@ export function NewProjectForm({ repos, baseUrl }: { repos: string[]; baseUrl: s
       </Field>
 
       <Field label="URL de producción" hint="Opcional. Para confirmar que el arreglo llegó (GET /api/version) y para el código QR." htmlFor="appUrl">
-        <input id="appUrl" name="appUrl" type="url" placeholder="https://mi-app.vercel.app" className="input" />
+        <input id="appUrl" name="appUrl" aria-describedby="appUrl-hint" type="url" placeholder="https://mi-app.vercel.app" className="input" />
       </Field>
 
       <Field label="Base de datos" hint="Opcional. URL de Postgres. Se guarda cifrada y se prueba antes de guardarla." htmlFor="dbUrl">
-        <input id="dbUrl" name="dbUrl" type="password" autoComplete="off" placeholder="postgresql://fixie:…@host:5432/postgres" className="input font-mono text-[13px]" />
+        <input id="dbUrl" name="dbUrl" aria-describedby="dbUrl-hint" type="password" autoComplete="off" placeholder="postgresql://fixie:…@host:5432/postgres" className="input font-mono text-[13px]" />
         <DbRoleHelp />
       </Field>
 
@@ -114,7 +116,9 @@ function Field({ label, hint, htmlFor, children }: { label: string; hint: string
         {label}
       </label>
       {children}
-      <span className="text-[12px] text-fg-3">{hint}</span>
+      <span id={`${htmlFor}-hint`} className="text-[12px] text-fg-3">
+        {hint}
+      </span>
     </div>
   );
 }
