@@ -3,7 +3,7 @@ import { generateText, isStepCount, tool } from "ai";
 import type { z } from "zod";
 import type { ProjectRow } from "../db";
 import { metered, type UsageKind } from "../usage";
-import { agentModel, fastModel } from "./model";
+import { agentModel, fastModel, NO_THINKING } from "./model";
 
 /** Una sola respuesta estructurada del modelo (una herramienta forzada), sin bucle de agente. */
 export async function askStructured<S extends z.ZodType>(opts: {
@@ -38,7 +38,7 @@ export async function askStructured<S extends z.ZodType>(opts: {
     onStepEnd: m.onStepEnd,
     maxOutputTokens: opts.maxOutputTokens ?? 4000,
     // Las tareas rápidas no necesitan razonamiento extendido: menos tokens y menos espera.
-    providerOptions: opts.fast ? { deepseek: { thinking: { type: "disabled" } } } : undefined,
+    providerOptions: opts.fast ? NO_THINKING : undefined,
   }));
   return out;
 }

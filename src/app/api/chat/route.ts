@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { convertToModelMessages, createUIMessageStreamResponse, isStepCount, safeValidateUIMessages, streamText, tool, toUIMessageStream } from "ai";
-import { fastModel, hasModelKey } from "@/lib/agent/model";
+import { fastModel, hasModelKey, missingKeyMessage, NO_THINKING } from "@/lib/agent/model";
 import { ASSISTANT_TOOLS, GUIDE, toolErrorText } from "@/lib/assistant";
 import { getUserRow } from "@/lib/session";
 import { BudgetExceededError, providerError, startMeter } from "@/lib/usage";
@@ -28,7 +28,7 @@ const inFlight = new Map<string, number>();
 export async function POST(req: Request) {
   const user = await getUserRow();
   if (!user) return new Response("Inicia sesión para usar el asistente.", { status: 401 });
-  if (!hasModelKey()) return new Response("Falta la clave del modelo (DEEPSEEK_API_KEY). Mientras tanto puedes conectar tu propia IA por MCP.", { status: 503 });
+  if (!hasModelKey()) return new Response(`${missingKeyMessage()} Mientras tanto puedes conectar tu propia IA por MCP.`, { status: 503 });
 
   const raw = await req.text().catch(() => "");
   if (raw.length > MAX_BODY_CHARS) return new Response("La conversación es demasiado larga. Empieza una nueva.", { status: 413 });
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     stopWhen: [isStepCount(6), meter.hooks.stopWhen],
     onStepEnd: meter.hooks.onStepEnd,
     maxOutputTokens: 1500,
-    providerOptions: { deepseek: { thinking: { type: "disabled" } } },
+    providerOptions: NO_THINKING,
   });
 
   inFlight.set(user.id, (inFlight.get(user.id) ?? 0) + 1);

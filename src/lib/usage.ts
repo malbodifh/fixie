@@ -1,6 +1,6 @@
 import "server-only";
 import { APICallError, type LanguageModelUsage } from "ai";
-import { modelName } from "./agent/model";
+import { modelName, providerLabel } from "./agent/model";
 import { db, must, type ProjectRow, type UserRow } from "./db";
 import type { RepairInfo } from "./model";
 import { allowance, computeBudget, credits, dayLabel, type Allowance, type Budget, type Plan } from "./plans";
@@ -166,10 +166,11 @@ export async function metered<T>(
 /** Los errores del proveedor del modelo, explicados para el panel. */
 export function providerError(err: unknown): unknown {
   if (!APICallError.isInstance(err)) return err;
-  if (err.statusCode === 401 || err.statusCode === 403) return new Error("La clave de DeepSeek no es válida. Revisa DEEPSEEK_API_KEY en la configuración del servidor.");
-  if (err.statusCode === 402) return new Error("La cuenta de DeepSeek se quedó sin saldo. Recárgala en platform.deepseek.com.");
-  if (err.statusCode === 429) return new Error("DeepSeek está limitando las peticiones. Fixie lo reintenta en la próxima revisión.");
-  if ((err.statusCode ?? 0) >= 500) return new Error("DeepSeek no respondió. Fixie lo reintenta en la próxima revisión.");
+  const { name, env } = providerLabel();
+  if (err.statusCode === 401 || err.statusCode === 403) return new Error(`La clave de ${name} no es válida. Revisa ${env} en la configuración del servidor.`);
+  if (err.statusCode === 402) return new Error(`La cuenta de ${name} se quedó sin saldo o sin cuota. Recárgala en el panel del proveedor.`);
+  if (err.statusCode === 429) return new Error(`${name} está limitando las peticiones. Fixie lo reintenta en la próxima revisión.`);
+  if ((err.statusCode ?? 0) >= 500) return new Error(`${name} no respondió. Fixie lo reintenta en la próxima revisión.`);
   return err;
 }
 
