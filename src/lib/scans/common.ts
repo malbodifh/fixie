@@ -134,6 +134,36 @@ const MAX_REDIRECTS = 5;
  * host y su DNS antes de cada salto, y las redirecciones se siguen a mano para
  * revisar también cada destino. El tiempo límite cubre todos los saltos.
  */
+/**
+ * El hosting frenó el análisis con su protección contra bots (desafío de Vercel o
+ * Cloudflare, o límite de peticiones). No es un fallo de la app: no se reporta ni se repara.
+ */
+export class HostBlockedError extends Error {
+  constructor() {
+    super("El hosting bloqueó el análisis con su protección contra bots. Permite el user-agent FixieBot en el firewall o vuelve a intentarlo en unos minutos.");
+    this.name = "HostBlockedError";
+  }
+}
+
+function blockedByHost(res: Response): boolean {
+  return res.status === 429 || ((res.status === 403 || res.status === 503) && !!(res.headers.get("x-vercel-mitigated") || res.headers.get("cf-mitigated")));
+}
+
+/** Como Promise.all sobre `items`, pero de a `limit` a la vez: no satura la app (ni su firewall). */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    }),
+  );
+  return out;
+}
+
 export async function fetchApp(url: string, init: RequestInit = {}, timeoutMs = 10_000): Promise<Response> {
   const signal = AbortSignal.timeout(timeoutMs);
   const follow = !init.redirect || init.redirect === "follow";
@@ -150,6 +180,10 @@ export async function fetchApp(url: string, init: RequestInit = {}, timeoutMs = 
       signal,
       headers: { "user-agent": "FixieBot/1.0 (+análisis autorizado por el dueño)", ...init.headers },
     });
+    if (blockedByHost(res)) {
+      await res.body?.cancel().catch(() => {});
+      throw new HostBlockedError();
+    }
     const location = res.headers.get("location");
     if (!follow || res.status < 300 || res.status >= 400 || !location) return res;
     if (hop >= MAX_REDIRECTS) throw new Error("Demasiadas redirecciones.");

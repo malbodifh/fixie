@@ -5,7 +5,7 @@ import { hasModelKey } from "../agent/model";
 import type { ProjectRow } from "../db";
 import { GitHubError, type Repo } from "../github";
 import { BudgetExceededError } from "../usage";
-import { fetchApp, scoreOf, summaryOf, type Finding, type ScanResult, type Severity } from "./common";
+import { fetchApp, HostBlockedError, mapLimit, scoreOf, summaryOf, type Finding, type ScanResult, type Severity } from "./common";
 
 /**
  * Búsqueda diaria de errores, de lo más barato a lo más caro en tokens:
@@ -23,6 +23,8 @@ async function crawl(appUrl: string): Promise<Finding[]> {
   const origin = new URL(appUrl).origin;
   const f: Finding[] = [];
   const home = await fetchApp(appUrl, {}, 15_000).catch((err: unknown) => err as Error);
+  // Si el firewall del hosting frenó a Fixie, el análisis falla entero: no es un error de la app.
+  if (home instanceof HostBlockedError) throw home;
   if (home instanceof Error) {
     return [{ id: "down", title: "La app no responde", severity: "critico", passed: false, detail: `No respondió: ${home.message}.`, manual: true }];
   }
@@ -47,13 +49,13 @@ async function crawl(appUrl: string): Promise<Finding[]> {
   }
 
   const list = [...pages].slice(0, MAX_PAGES);
-  const results = await Promise.all(
-    list.map(async (path) => {
-      const r = await fetchApp(`${origin}${path}`, {}, 15_000).catch(() => null);
+  // De a 4 páginas: una ráfaga de 25 peticiones dispara la protección contra bots del hosting.
+  const results = await mapLimit(list, 4, async (path) => {
+      const r = await fetchApp(`${origin}${path}`, {}, 15_000).catch((err: unknown) => (err instanceof HostBlockedError ? "blocked" : null));
+      if (r === "blocked") return { path, status: -1, errorPage: false };
       const body = r ? await r.text().catch(() => "") : "";
       return { path, status: r?.status ?? 0, errorPage: /id=["']__next_error__["']|Internal Server Error|Application error: a (client|server)-side exception/i.test(body) };
-    }),
-  );
+  });
   for (const r of results) {
     if (r.status >= 500 || r.status === 0 || r.errorPage) {
       f.push({

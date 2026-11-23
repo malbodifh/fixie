@@ -44,3 +44,7 @@ next-env.d.ts
 # repos y proyectos aparte
 /demo-tienda/
 /archive/
+
+# Video de lanzamiento (Remotion): dependencias y renders
+/video/node_modules/
+/video/out/
