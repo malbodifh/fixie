@@ -52,7 +52,7 @@ export async function applyCopyAndOpenPR(ctx: ProjectContext, issueNumber: numbe
 
   await postStep(repo, issueNumber, "diagnosing", "Buscando cada texto en el código…");
   const head = await repo.getDefaultBranchHead();
-  const paths = (await repo.listFiles(head.sha)).filter((p) => SOURCE.test(p) && !/(^|\/)(tests?|__tests__)\//.test(p)).slice(0, MAX_FILES);
+  const paths = (await repo.listFiles(head.sha)).paths.filter((p) => SOURCE.test(p) && !/(^|\/)(tests?|__tests__)\//.test(p)).slice(0, MAX_FILES);
   const files = new Map<string, string>();
   // De a pocos: cientos de peticiones simultáneas activan el límite secundario de GitHub.
   for (let i = 0; i < paths.length; i += 10) {

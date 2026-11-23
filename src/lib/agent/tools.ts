@@ -66,7 +66,8 @@ export function invalidPaths(files: FileOut[], allowed: RegExp = WRITABLE): stri
 /** Herramientas de lectura sobre un commit del repo (y la BD, si hay). */
 export async function readTools(opts: { repo: Repo; ref: string; issue: number; dbUrl: string | null; announce?: boolean }) {
   const { repo, ref, issue, dbUrl } = opts;
-  const files = (await repo.listFiles(ref)).filter((f) => READABLE.test(f) && !SKIP.test(f));
+  const listing = await repo.listFiles(ref);
+  const files = listing.paths.filter((f) => READABLE.test(f) && !SKIP.test(f));
   const cache = new Map<string, string>();
   const load = async (path: string) => {
     if (!cache.has(path)) cache.set(path, (await repo.readFile(path, ref)).slice(0, MAX_FILE_CHARS));
@@ -78,9 +79,12 @@ export async function readTools(opts: { repo: Repo; ref: string; issue: number; 
       description: "Lee un archivo del repositorio (con números de línea).",
       inputSchema: z.object({ path: z.string() }),
       execute: async ({ path }) => {
-        if (!files.includes(path)) return { error: `No existe o no es legible: ${path}` };
+        // Con la lista cortada por GitHub, un archivo que no aparece puede existir: se intenta leer igual.
+        const known = files.includes(path) || (listing.truncated && READABLE.test(path) && !SKIP.test(path) && !path.includes(".."));
+        if (!known) return { error: `No existe o no es legible: ${path}` };
         if (opts.announce !== false) await postStep(repo, issue, "reading", `Leyendo \`${path}\``, { path });
-        const text = await load(path);
+        const text = await load(path).catch(() => null);
+        if (text === null) return { error: `No existe o no es legible: ${path}` };
         return { path, contenido: text.split("\n").map((l, i) => `${i + 1}: ${l}`).join("\n") };
       },
     }),
@@ -123,5 +127,8 @@ export async function readTools(opts: { repo: Repo; ref: string; issue: number; 
       : {}),
   };
 
-  return { tools, files: files.filter((f) => !f.endsWith(".md")) };
+  // La lista solo va al prompt: si GitHub la cortó, el agente lo sabe y puede leer archivos que no aparecen.
+  const listed = files.filter((f) => !f.endsWith(".md"));
+  if (listing.truncated) listed.push("(lista incompleta: el repositorio es muy grande; leer_archivo también abre archivos que no aparecen aquí)");
+  return { tools, files: listed };
 }

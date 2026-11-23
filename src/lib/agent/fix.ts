@@ -35,7 +35,8 @@ ${RULES}`;
 
 const RETRY_INSTRUCTIONS = `Eres Fixie. Tu arreglo anterior no bastó: las pruebas del entorno de pruebas fallan.
 Corrige el arreglo para que pasen TODAS las pruebas, incluidas las que escribió el agente revisor
-(archivos tests/autosana-revision-*). Esas pruebas no se tocan: el código debe cumplirlas.
+(archivos tests/autosana-revision-*) y la que reproduce el error. Ninguna prueba se toca: solo cambias
+el código para cumplirlas, así el arreglo sigue demostrado por la misma prueba que reprodujo el error.
 Si una prueba del revisor exige algo absurdo o contradictorio con el error original, dilo en resumen
 y aun así haz que el código sea robusto.
 
@@ -185,8 +186,9 @@ export async function retryFix(ctx: ProjectContext, inc: Incident, round: number
         archivos: z.array(fileSchema).min(1).max(5),
       }),
       execute: async (input) => {
-        const bad = [...invalidPaths(input.archivos, allowed), ...input.archivos.filter((f) => REVIEW_TESTS.test(f.path)).map((f) => f.path)];
-        if (bad.length) return { aceptado: false, error: `Rutas no permitidas (las pruebas del revisor no se tocan): ${bad.join(", ")}` };
+        // En un reintento ninguna prueba se reescribe: ni las del revisor ni la que reprodujo el error.
+        const bad = [...invalidPaths(input.archivos, allowed), ...input.archivos.filter((f) => TESTS.test(f.path)).map((f) => f.path)];
+        if (bad.length) return { aceptado: false, error: `Rutas no permitidas (en un reintento las pruebas no se tocan, solo el código): ${bad.join(", ")}` };
         proposal = input;
         return { aceptado: true };
       },

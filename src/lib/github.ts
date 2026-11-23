@@ -161,9 +161,13 @@ export class Repo {
     return ref.object.sha;
   }
 
-  async listFiles(sha: string): Promise<string[]> {
-    const tree = await this.gh<{ tree: { path: string; type: string }[] }>(`/git/trees/${sha}?recursive=1`);
-    return tree.tree.filter((e) => e.type === "blob").map((e) => e.path);
+  /**
+   * Archivos del repo en un commit. En repos muy grandes GitHub corta la lista
+   * (`truncated`): quien la use no debe tratar un archivo ausente como inexistente.
+   */
+  async listFiles(sha: string): Promise<{ paths: string[]; truncated: boolean }> {
+    const tree = await this.gh<{ tree: { path: string; type: string }[]; truncated?: boolean }>(`/git/trees/${sha}?recursive=1`);
+    return { paths: tree.tree.filter((e) => e.type === "blob").map((e) => e.path), truncated: tree.truncated === true };
   }
 
   readFile(path: string, ref: string): Promise<string> {
@@ -262,26 +266,32 @@ export class Repo {
 
   /** Estado combinado de los check runs de un commit, con los mensajes de fallo. */
   async getCiState(sha: string): Promise<{ state: CiState; failed: string[]; details: string }> {
-    const data = await this.gh<{
-      check_runs: { id: number; name: string; status: string; conclusion: string | null; output?: { summary?: string | null } }[];
-    }>(`/commits/${sha}/check-runs?per_page=50`);
+    // Dos fuentes de CI: los check runs (GitHub Actions y apps nuevas) y los estados de
+    // commit clásicos (CircleCI, Jenkins, Travis…). Un repo puede usar solo una de las dos.
+    const [data, combined] = await Promise.all([
+      this.gh<{ check_runs: { id: number; name: string; status: string; conclusion: string | null }[] }>(`/commits/${sha}/check-runs?per_page=50`),
+      this.gh<{ statuses: { context: string; state: string; description: string | null }[] }>(`/commits/${sha}/status?per_page=100`).catch(() => ({ statuses: [] })),
+    ]);
     const runs = data.check_runs;
-    if (runs.length === 0) return { state: "none", failed: [], details: "" };
+    const statuses = combined.statuses;
+    if (runs.length === 0 && statuses.length === 0) return { state: "none", failed: [], details: "" };
     const bad = runs.filter((r) => r.status === "completed" && !["success", "skipped", "neutral"].includes(r.conclusion ?? ""));
-    if (bad.length > 0) {
+    const badStatuses = statuses.filter((s) => s.state === "failure" || s.state === "error");
+    if (bad.length > 0 || badStatuses.length > 0) {
       const notes = await Promise.all(
         bad.slice(0, 2).map((r) =>
           this.gh<{ message: string; path: string; start_line: number }[]>(`/check-runs/${r.id}/annotations`).catch(() => []),
         ),
       );
-      const details = notes
-        .flat()
-        .map((a) => `${a.path}:${a.start_line} ${a.message}`)
+      const details = [
+        ...notes.flat().map((a) => `${a.path}:${a.start_line} ${a.message}`),
+        ...badStatuses.map((s) => `${s.context}: ${s.description ?? s.state}`),
+      ]
         .join("\n")
         .slice(0, 3000);
-      return { state: "failure", failed: bad.map((r) => r.name), details };
+      return { state: "failure", failed: [...bad.map((r) => r.name), ...badStatuses.map((s) => s.context)], details };
     }
-    if (runs.some((r) => r.status !== "completed")) return { state: "pending", failed: [], details: "" };
+    if (runs.some((r) => r.status !== "completed") || statuses.some((s) => s.state === "pending")) return { state: "pending", failed: [], details: "" };
     return { state: "success", failed: [], details: "" };
   }
 
