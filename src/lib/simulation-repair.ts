@@ -1,4 +1,4 @@
-import { currentRound, deriveStage, type IncidentData, type PullFile, type RepairInfo, type RepairKind, type Step, type StepData, type StepKind } from "./model";
+import { currentRound, deriveStage, REPAIR_LABEL, type IncidentData, type PullFile, type RepairInfo, type RepairKind, type Step, type StepData, type StepKind } from "./model";
 
 /**
  * Simulación de una reparación de hallazgos, sin backend: el mismo ciclo que un
@@ -235,12 +235,14 @@ const SIM: Record<RepairKind, { info: RepairInfo; script: Script; diff: PullFile
       { t: 15, kind: "reproduced", text: "Reproducido: la prueba inyecta `1 OR 1=1` y lee todos los pedidos; otra lee un pedido ajeno.", data: { round: 1 } },
       { t: 20, kind: "ci_passed", text: "Con la reparación, las pruebas pasan.", data: { round: 1 } },
       { t: 21, kind: "review_started", text: "Otro agente intenta demostrar que la reparación está incompleta…", data: { round: 1 } },
-      { t: 25, kind: "review_pushed", text: "El revisor probó un id negativo y uno con comillas: la ruta de cancelación tenía el mismo fallo.", data: { round: 1 } },
-      { t: 26, kind: "fixing", text: "Ronda 2: corrigiendo con lo que falló…", data: { round: 2 } },
+      { t: 25, kind: "review_pushed", text: "El revisor probó un id negativo, uno con comillas y la ruta de cancelación.", data: { round: 1 } },
+      { t: 26, kind: "review_failed", text: "El revisor lo rompió: la ruta de cancelación tenía la misma inyección. A reparar de nuevo.", data: { round: 1 } },
+      { t: 27, kind: "fixing", text: "Ronda 2: corrigiendo con lo que falló…", data: { round: 2 } },
+      { t: 29, kind: "fix_pushed", text: "Reparación v2: la ruta de cancelación también usa la consulta parametrizada.", data: { round: 2 } },
       { t: 31, kind: "ci_passed", text: "Con la reparación, las pruebas pasan, incluidas las del revisor.", data: { round: 2 } },
       { t: 34, kind: "review_passed", text: "El revisor no encontró más huecos. Aprobada.", data: { round: 2 } },
       { t: 36, kind: "merged", text: "PR #14 mergeado a main. Desplegando…", data: { pr: 14, sha: "f1a2b3c4d5e6" } },
-      { t: 42, kind: "verified", text: "Desplegado. Las pruebas que reproducen cada explotación pasan; el próximo pentest profundo lo confirma.", data: { sha: "f1a2b3c4d5e6", score: 100 } },
+      { t: 42, kind: "verified", text: "Desplegado. Las pruebas que reproducen cada explotación pasan; el próximo pentest profundo lo confirma.", data: { sha: "f1a2b3c4d5e6" } },
     ],
     diff: [
       {
@@ -317,7 +319,7 @@ const SIM: Record<RepairKind, { info: RepairInfo; script: Script; diff: PullFile
 +      "integrity": "sha512-…",`,
       },
       {
-        filename: "tests/fixie-dependencias-44.test.ts",
+        filename: "tests/fixie-dependencias-43.test.ts",
         status: "added",
         additions: 6,
         deletions: 0,
@@ -372,7 +374,7 @@ export function simulatedRepair(kind: RepairKind, startedAt: number, now: number
   return {
     incident: {
       number: SIM_REPAIR_NUMBER,
-      title: `Fixie: reparar ${n} hallazgos`,
+      title: `Fixie: reparar ${n} ${n === 1 ? "hallazgo" : "hallazgos"} de ${REPAIR_LABEL[kind]}`,
       url: "https://github.com/autosana/devshop/issues/43",
       createdAt: new Date(startedAt).toISOString(),
       payload: null,

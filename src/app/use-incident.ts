@@ -10,12 +10,19 @@ export type IncidentSource =
   | { kind: "sim"; startedAt: number }
   | { kind: "sim-repair"; repair: RepairKind; startedAt: number };
 
-export const TERMINAL: Stage[] = ["verificado", "fallido", "revision"];
+export const TERMINAL: Stage[] = ["verificado", "fallido", "revision", "pausado"];
 
-/** Datos de un incidente: real (consulta la API cada 3 s) o simulado. */
+// Cada cuánto se consulta un incidente real: rápido mientras trabaja y lento en
+// pausa, porque el motor lo retoma solo cuando se renuevan los créditos.
+const LIVE_MS = 4000;
+const PAUSED_MS = 30_000;
+
+/** Datos de un incidente: real (consulta la API cada 4 s) o simulado. */
 export function useIncident(source: IncidentSource) {
   const [data, setData] = useState<IncidentData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Al reintentar, el incidente vuelve a trabajar: se reanuda la consulta periódica.
+  const [nonce, setNonce] = useState(0);
 
   const key =
     source.kind === "live" ? `live-${source.projectId}-${source.number}` : source.kind === "sim" ? `sim-${source.startedAt}` : `sim-${source.repair}-${source.startedAt}`;
@@ -34,6 +41,7 @@ export function useIncident(source: IncidentSource) {
       tick();
     } else {
       const load = async () => {
+        let wait = LIVE_MS;
         try {
           const res = await fetch(`/api/projects/${source.projectId}/incidents/${source.number}`, { cache: "no-store" });
           if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -41,11 +49,14 @@ export function useIncident(source: IncidentSource) {
           if (!alive) return;
           setData(next);
           setError(null);
-          if (TERMINAL.includes(next.incident.stage)) return;
+          const stage = next.incident.stage;
+          // En pausa no termina: se sigue consultando, más despacio, para ver cuándo se retoma.
+          if (stage === "pausado") wait = PAUSED_MS;
+          else if (TERMINAL.includes(stage)) return;
         } catch (e) {
           if (alive) setError(e instanceof Error ? e.message : "Error");
         }
-        if (alive) timer = setTimeout(load, 4000);
+        if (alive) timer = setTimeout(load, wait);
       };
       load();
     }
@@ -56,7 +67,7 @@ export function useIncident(source: IncidentSource) {
     };
     // key resume el source: cambia solo cuando cambia el incidente.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, nonce]);
 
-  return { data, error };
+  return { data, error, reload: () => setNonce((n) => n + 1) };
 }

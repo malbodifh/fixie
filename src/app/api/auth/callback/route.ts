@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const token = await exchangeOAuthCode({ clientId, clientSecret: env.githubClientSecret(), code, redirectUri: `${env.baseUrl()}/api/auth/callback` });
     await signInWithGitHubToken(token);
   } catch (err) {
-    console.error("[autosana] login falló", err);
+    console.error("[fixie] login falló", err);
     redirect("/?error=oauth");
   }
   redirect("/proyectos");

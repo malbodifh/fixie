@@ -1,5 +1,4 @@
-import { safeEqual } from "@/lib/crypto";
-import { env } from "@/lib/env";
+import { cronAuthorized, unauthorized } from "@/lib/cron";
 import { createBackup, listProjectsWithDb, projectContext } from "@/lib/projects";
 
 export const maxDuration = 300;
@@ -9,9 +8,7 @@ export const maxDuration = 300;
  * proyecto vinculado. Los análisis y reparaciones van en la revisión diaria.
  */
 export async function GET(req: Request) {
-  const secret = env.cronSecret();
-  const auth = req.headers.get("authorization") ?? "";
-  if (!secret || !safeEqual(auth, `Bearer ${secret}`)) return Response.json({ error: "No autorizado" }, { status: 401 });
+  if (!cronAuthorized(req)) return unauthorized();
 
   const results: { project: string; step: string; ok: boolean; detail: string }[] = [];
   for (const project of await listProjectsWithDb()) {

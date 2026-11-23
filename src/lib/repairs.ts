@@ -7,6 +7,8 @@ import type { RepairInfo, RepairSummary } from "./model";
 import { projectContext } from "./projects";
 import { latestScans, type ScanRow } from "./scans";
 import { NEEDS_DECISION, repairable, type Finding, type ScanKind } from "./scans/common";
+import { coversKnownVulns } from "./plans";
+import { checkAllowance, isCriticalWork, planOf } from "./usage";
 
 /**
  * Una reparación de código a la vez por proyecto (varias tocarían los mismos
@@ -17,9 +19,19 @@ const PRIORITY: ScanKind[] = ["errors", "pentest_deep", "pentest", "lighthouse"]
 
 /** La revisión es diaria: un intento por día, aunque el cron se corra unos minutos antes. */
 const RETRY_AFTER_MS = 20 * 60 * 60_000;
-/** Tras 3 intentos fallidos con exactamente los mismos hallazgos, se espera una semana (y se avisa al usuario). */
+/**
+ * Tras 3 intentos fallidos seguidos que ya cubrían todos estos hallazgos, se
+ * espera una semana. (El panel todavía no muestra esta espera.)
+ */
 const MAX_FAILED_ATTEMPTS = 3;
 const BACKOFF_MS = 7 * 24 * 60 * 60_000;
+
+/** Carril de la reparación: el código (una a la vez) o las dependencias (aparte). */
+const laneOf = (project: ProjectRow, kind: ScanKind) => `${project.id}:${kind === "deps" ? "deps" : "code"}`;
+const busy = (all: RepairSummary[], kind: ScanKind) => all.some((r) => r.open && (kind === "deps") === (r.kind === "deps"));
+// Entre leer las reparaciones abiertas y crear el issue pasan varios segundos: dos
+// llamadas a la vez en esta instancia (cron, panel, asistente) abrirían dos.
+const opening = new Set<string>();
 
 function infoFor(scan: ScanRow, findings: Finding[]): RepairInfo {
   return {
@@ -57,17 +69,27 @@ export async function startRepairIfNeeded(project: ProjectRow, scan: ScanRow): P
   if (findings.length === 0) return null;
   // Las dependencias se actualizan sin IA; lo demás necesita el modelo.
   if (scan.kind !== "deps" && !hasModelKey()) return null;
+  // La vigilancia de vulnerabilidades conocidas es de los planes de pago.
+  if (scan.kind === "deps" && !coversKnownVulns(await planOf(project.owner_id))) return null;
 
-  const ctx = await projectContext(project);
-  const all = await listRepairs(ctx.repo);
-  const busy = scan.kind === "deps" ? all.some((r) => r.open && r.kind === "deps") : all.some((r) => r.open && r.kind !== "deps");
-  if (busy) return null;
-  const repairs = all.filter((r) => r.kind === scan.kind);
-  if (!shouldRetry(repairs, findings.map((f) => f.id))) return null;
+  const lane = laneOf(project, scan.kind);
+  if (opening.has(lane)) return null;
+  opening.add(lane);
+  try {
+    const ctx = await projectContext(project);
+    const all = await listRepairs(ctx.repo);
+    if (busy(all, scan.kind)) return null;
+    const repairs = all.filter((r) => r.kind === scan.kind);
+    if (!shouldRetry(repairs, findings.map((f) => f.id))) return null;
 
-  const info = infoFor(scan, findings);
-  const issue = await createRepair(ctx.repo, info);
-  return startRepair(ctx, issue.number, info);
+    const info = infoFor(scan, findings);
+    // Sin créditos no se abre: la revisión diaria lo vuelve a intentar cuando se renueven.
+    if (scan.kind !== "deps" && !(await checkAllowance(project.owner_id, isCriticalWork(info))).ok) return null;
+    const issue = await createRepair(ctx.repo, info);
+    return startRepair(ctx, issue.number, info);
+  } finally {
+    opening.delete(lane);
+  }
 }
 
 /**
@@ -90,10 +112,23 @@ export async function startNextRepair(project: ProjectRow): Promise<(() => Promi
 export async function startChosenRepair(project: ProjectRow, scan: ScanRow, ids: string[]): Promise<(() => Promise<void>) | { error: string }> {
   const findings = scan.findings.filter((f) => ids.includes(f.id) && !f.passed && !f.manual);
   if (findings.length === 0) return { error: "Elige al menos un cambio." };
-  const ctx = await projectContext(project);
-  const repairs = (await listRepairs(ctx.repo)).filter((r) => r.kind === scan.kind);
-  if (repairs.some((r) => r.open)) return { error: "Ya hay cambios en curso. Espera a que terminen." };
-  const info = infoFor(scan, findings);
-  const issue = await createRepair(ctx.repo, info);
-  return startRepair(ctx, issue.number, info);
+  const inProgress = { error: "Ya hay cambios en curso. Espera a que terminen." };
+  const lane = laneOf(project, scan.kind);
+  if (opening.has(lane)) return inProgress;
+  opening.add(lane);
+  try {
+    const ctx = await projectContext(project);
+    // Una reparación de código a la vez por proyecto, también para lo que elige el usuario.
+    if (busy(await listRepairs(ctx.repo), scan.kind)) return inProgress;
+    const info = infoFor(scan, findings);
+    // Los textos elegidos se aplican sin IA; lo demás necesita créditos.
+    if (findings.some((f) => !f.copy)) {
+      const ok = await checkAllowance(project.owner_id, false);
+      if (!ok.ok) return { error: "Llegaste al límite de consumo de tu plan. Puedes aplicar solo los cambios de texto o esperar a que se renueven tus créditos." };
+    }
+    const issue = await createRepair(ctx.repo, info);
+    return startRepair(ctx, issue.number, info);
+  } finally {
+    opening.delete(lane);
+  }
 }

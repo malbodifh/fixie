@@ -17,11 +17,12 @@ export const LIGHTHOUSE_TARGET = 90;
 const HOSTING = new Set(["server-response-time", "is-on-https", "redirects-http", "uses-http2", "uses-text-compression"]);
 
 type Audit = { id: string; title: string; description?: string; score: number | null; scoreDisplayMode?: string; displayValue?: string };
+type Report = {
+  categories: Record<string, { score: number | null; auditRefs?: { id: string; weight: number; group?: string }[] }>;
+  audits: Record<string, Audit>;
+};
 type Psi = {
-  lighthouseResult?: {
-    categories: Record<string, { score: number | null; auditRefs: { id: string; weight: number; group?: string }[] }>;
-    audits: Record<string, Audit>;
-  };
+  lighthouseResult?: Partial<Report> & { runtimeError?: { code?: string; message?: string } };
   error?: { message: string };
 };
 
@@ -29,16 +30,23 @@ function plain(md: string): string {
   return md.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/`/g, "").split(". ")[0].slice(0, 220);
 }
 
-async function psi(appUrl: string, strategy: "mobile" | "desktop"): Promise<{ ok: true; data: NonNullable<Psi["lighthouseResult"]> } | { ok: false; status: number; message: string }> {
+async function psi(appUrl: string, strategy: "mobile" | "desktop"): Promise<{ ok: true; data: Report } | { ok: false; status: number; message: string }> {
   const api = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
   api.searchParams.set("url", appUrl);
   api.searchParams.set("strategy", strategy);
+  // Títulos y descripciones de las auditorías en español.
+  api.searchParams.set("locale", "es");
   for (const c of CATEGORIES) api.searchParams.append("category", c);
   if (process.env.PSI_API_KEY) api.searchParams.set("key", process.env.PSI_API_KEY);
   const res = await fetch(api, { cache: "no-store", signal: AbortSignal.timeout(150_000) });
   const data = (await res.json().catch(() => ({}))) as Psi;
-  if (!res.ok || !data.lighthouseResult) return { ok: false, status: res.status, message: data.error?.message ?? String(res.status) };
-  return { ok: true, data: data.lighthouseResult };
+  const lr = data.lighthouseResult;
+  if (!res.ok || !lr) return { ok: false, status: res.status, message: data.error?.message ?? String(res.status) };
+  // La página no cargó (404, 500, sin pintado…): Lighthouse devuelve puntajes vacíos, no un 0 real.
+  if (lr.runtimeError?.code && lr.runtimeError.code !== "NO_ERROR") {
+    return { ok: false, status: res.status, message: lr.runtimeError.message ?? lr.runtimeError.code };
+  }
+  return { ok: true, data: { categories: lr.categories ?? {}, audits: lr.audits ?? {} } };
 }
 
 /**
@@ -70,17 +78,23 @@ export async function runLighthouse(appUrl: string): Promise<ScanResult> {
     };
   }
 
-  const scores = {} as Record<StrategyLabel, Record<Category, number>>;
+  // Una categoría sin puntaje (falló esa parte del análisis) no cuenta como 0.
+  const scores = {} as Record<StrategyLabel, Partial<Record<Category, number>>>;
   const metrics = {} as Record<StrategyLabel, Record<string, string>>;
   const byAudit = new Map<string, { audit: Audit; strategies: StrategyLabel[]; categories: Set<Category>; worst: number }>();
+  const isBelow = (v: number | undefined) => v !== undefined && v < LIGHTHOUSE_TARGET;
 
   for (const run of runs) {
     if (!run.r.ok) continue;
     const lr = run.r.data;
-    scores[run.label] = Object.fromEntries(CATEGORIES.map((c) => [c, Math.round((lr.categories[c]?.score ?? 0) * 100)])) as Record<Category, number>;
+    scores[run.label] = {};
+    for (const c of CATEGORIES) {
+      const s = lr.categories[c]?.score;
+      if (typeof s === "number") scores[run.label][c] = Math.round(s * 100);
+    }
     metrics[run.label] = Object.fromEntries(METRICS.map((m) => [m, lr.audits[m]?.displayValue ?? "—"]));
     for (const c of CATEGORIES) {
-      if (scores[run.label][c] >= LIGHTHOUSE_TARGET) continue;
+      if (!isBelow(scores[run.label][c])) continue;
       // Esta categoría está bajo la meta: sus auditorías con peso que fallan.
       for (const ref of lr.categories[c]?.auditRefs ?? []) {
         const a = lr.audits[ref.id];
@@ -111,8 +125,9 @@ export async function runLighthouse(appUrl: string): Promise<ScanResult> {
 
   // El puntaje es la peor categoría: la meta es que ninguna baje de 90.
   const all = Object.values(scores).flatMap((s) => Object.values(s));
+  if (all.length === 0) return { status: "error", score: null, summary: "PageSpeed Insights no devolvió puntajes para la página.", findings: [] };
   const score = Math.min(...all);
-  const below = STRATEGIES.flatMap((s) => CATEGORIES.filter((c) => scores[s.label][c] < LIGHTHOUSE_TARGET).map((c) => `${NAME[c]} ${scores[s.label][c]} (${s.label === "movil" ? "móvil" : "escritorio"})`));
+  const below = STRATEGIES.flatMap((s) => CATEGORIES.filter((c) => isBelow(scores[s.label][c])).map((c) => `${NAME[c]} ${scores[s.label][c]} (${s.label === "movil" ? "móvil" : "escritorio"})`));
   return {
     status: "ok",
     score,

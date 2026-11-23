@@ -4,6 +4,7 @@ import { z } from "zod";
 import { postStep, type RepairInfo } from "../incidents";
 import { REPAIR_LABEL } from "../model";
 import type { ProjectContext } from "../projects";
+import { isCriticalWork, metered } from "../usage";
 import { agentModel } from "./model";
 import { describeRepair, fileSchema, invalidPaths, readTools, REPAIR_RULES, REPAIR_WRITABLE, REVIEW_TESTS, TESTS, type FileOut } from "./tools";
 
@@ -76,7 +77,8 @@ export async function repairAndOpenPR(ctx: ProjectContext, issueNumber: number, 
     }),
   };
 
-  await generateText({
+  await metered({ project, kind: "repair", critical: isCriticalWork(info), incident: issueNumber, done: () => proposal !== null }, (m) =>
+    generateText({
     model: agentModel(),
     instructions: INSTRUCTIONS,
     prompt: `${describeRepair(info, project.app_url)}
@@ -84,9 +86,10 @@ export async function repairAndOpenPR(ctx: ProjectContext, issueNumber: number, 
 Archivos del repositorio:
 ${files.join("\n")}`,
     tools,
-    stopWhen: [() => proposal !== null, isStepCount(20)],
+    stopWhen: [() => proposal !== null, isStepCount(20), m.stopWhen],
+    onStepEnd: m.onStepEnd,
     maxOutputTokens: 20_000,
-  });
+  }));
 
   const fix = proposal as Proposal | null;
   if (!fix) throw new Error("No encontré una reparación segura. Un humano debe revisar estos hallazgos.");

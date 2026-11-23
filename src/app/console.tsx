@@ -29,6 +29,11 @@ export function Console({ projectId, settled = false }: { projectId?: string; se
   useEffect(() => {
     if (!projectId) return;
     let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    // El más reciente de la consulta anterior; undefined hasta la primera respuesta.
+    let newest: number | null | undefined;
+    // Una consulta a la vez: la siguiente se programa al terminar la anterior,
+    // así una respuesta lenta no pisa a una más nueva.
     const load = async () => {
       try {
         const res = await fetch(`/api/projects/${projectId}/incidents`, { cache: "no-store" });
@@ -36,21 +41,20 @@ export function Console({ projectId, settled = false }: { projectId?: string; se
         const data = (await res.json()) as { incidents: IncidentSummary[] };
         if (!alive) return;
         setFailed(false);
-        setIncidents((prev) => {
-          // Si llega un incidente nuevo, la vista salta a él.
-          const newest = data.incidents[0]?.number;
-          if (newest && prev && prev[0]?.number !== newest) setSelected(newest);
-          return data.incidents;
-        });
+        setIncidents(data.incidents);
+        // Si llega un incidente nuevo, la vista salta a él.
+        const latest = data.incidents[0]?.number ?? null;
+        if (newest !== undefined && latest !== null && latest !== newest) setSelected(latest);
+        newest = latest;
       } catch {
         if (alive) setFailed(true);
       }
+      if (alive) timer = setTimeout(load, 5000);
     };
     load();
-    const id = setInterval(load, 5000);
     return () => {
       alive = false;
-      clearInterval(id);
+      clearTimeout(timer);
     };
   }, [projectId]);
 
@@ -105,15 +109,22 @@ export function Console({ projectId, settled = false }: { projectId?: string; se
           {list.map((i) => {
             const active = i.number === current;
             const isSim = simItem && i.number === SIM_NUMBER;
+            const state = i.open ? "En curso" : i.stopped ? "Detenido sin arreglar" : "Arreglado";
             return (
               <button
+                type="button"
                 key={`${isSim ? "sim" : "live"}-${i.number}`}
                 onClick={() => setSelected(i.number)}
-                aria-current={active}
+                aria-current={active ? "true" : undefined}
                 className={`flex flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors ${active ? "bg-surface-2" : "hover:bg-surface-2/70"}`}
               >
                 <span className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${i.open ? "bg-accent" : "bg-ok"}`} aria-hidden />
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${i.open ? "bg-accent" : i.stopped ? "bg-bad" : "bg-ok"}`}
+                    title={state}
+                    aria-hidden
+                  />
+                  <span className="sr-only">{state}:</span>
                   <span className="text-[13px] font-medium tabular">#{i.number}</span>
                   {isSim && <span className="badge bg-accent-soft text-accent">Simulación</span>}
                   <span className="ml-auto text-[12px] text-fg-3">{timeAgo(i.createdAt)}</span>
@@ -124,7 +135,7 @@ export function Console({ projectId, settled = false }: { projectId?: string; se
           })}
         </div>
         <div className="border-t border-line p-2">
-          <button onClick={() => startSim()} className="btn btn-ghost btn-sm w-full">
+          <button type="button" onClick={() => startSim()} className="btn btn-ghost btn-sm w-full">
             <Play />
             Simular incidente
           </button>
@@ -152,7 +163,7 @@ export function Console({ projectId, settled = false }: { projectId?: string; se
                     : "Reproducir, arreglar, que un revisor intente romperlo y publicar, en un minuto."}
                 </p>
               </div>
-              <button onClick={() => startSim()} className="btn btn-primary">
+              <button type="button" onClick={() => startSim()} className="btn btn-primary">
                 <Play />
                 Ver una simulación
               </button>

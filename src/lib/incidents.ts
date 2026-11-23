@@ -3,12 +3,15 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Issue, Repo } from "./github";
 import {
+  currentAttempt,
   currentRound,
+  DEPLOY_TIMEOUT_MS,
   deriveStage,
   REPAIR_LABEL,
   STEP_KINDS,
   type Incident,
   type IncidentPayload,
+  type IncidentSummary,
   type RepairInfo,
   type RepairSummary,
   type Step,
@@ -30,9 +33,13 @@ export type { Incident, IncidentPayload, RepairInfo, Stage, Step, StepKind } fro
 
 /** JSON que no puede cerrar el comentario HTML que lo contiene. */
 function safeJson(value: unknown): string {
-  // El escape > queda como texto en el JSON; JSON.parse lo vuelve ">".
-  return JSON.stringify(value).replace(/-->/g, "--\u003e");
+  // "-->" solo aparece dentro de strings del JSON: se escribe como el escape JSON
+  // de ">" (seis caracteres literales), que JSON.parse vuelve a convertir en "-->".
+  return JSON.stringify(value).replace(/-->/g, "--\\u003e");
 }
+
+/** Texto de la app monitoreada en el issue: una @mención no debe notificar a nadie en GitHub. */
+const noMentions = (text: string) => text.replace(/@/g, "@\u200b");
 
 const MARKER = /^<!-- autosana:(\{.*?\}) -->\n?/;
 
@@ -74,7 +81,7 @@ export function fingerprint(p: IncidentPayload): string {
 
 function issueBody(p: IncidentPayload, fp: string): string {
   return `<!-- autosana-incident:${safeJson({ fp, payload: p })} -->
-**${p.name}:** ${p.message}
+**${noMentions(p.name)}:** ${noMentions(p.message)}
 
 | | |
 |---|---|
@@ -115,6 +122,17 @@ export function recordIncident(repo: Repo, p: IncidentPayload): Promise<{ issue:
       await postStep(repo, match.number, "recurred", "El error volvió a ocurrir.");
       return { issue: match, isNew: false };
     }
+    // El merge cierra el issue ("Closes #N") antes de que el despliegue llegue a
+    // producción: lo que todavía lanza la versión anterior no es un incidente nuevo
+    // (abriría otro PR con el mismo arreglo).
+    const since = new Date(Date.now() - 2 * DEPLOY_TIMEOUT_MS).toISOString();
+    const closed = (await repo.listIncidentIssues("closed", { since })).filter((i) => i.state_reason === "completed" && parseIssueBody(i.body)?.fp === fp);
+    for (const candidate of closed) {
+      const inc = await getIncident(repo, candidate.number).catch(() => null);
+      if (inc?.stage !== "desplegando") continue;
+      await postStep(repo, candidate.number, "recurred", "El error volvió a ocurrir mientras se despliega el arreglo.");
+      return { issue: candidate, isNew: false };
+    }
     const title = `${p.name}: ${p.message}`.slice(0, 200);
     const issue = await repo.createIssue(title, issueBody(p, fp));
     await postStep(repo, issue.number, "detected", `Error detectado en \`${p.route.path}\`.`);
@@ -122,15 +140,21 @@ export function recordIncident(repo: Repo, p: IncidentPayload): Promise<{ issue:
   })();
 
   inFlight.set(key, task);
-  task.finally(() => setTimeout(() => inFlight.delete(key), 30_000));
+  // Si falla, se olvida de inmediato (el siguiente reporte lo reintenta); con ambos
+  // manejadores, el rechazo no queda como promesa sin atender.
+  task.then(
+    () => setTimeout(() => inFlight.delete(key), 30_000),
+    () => inFlight.delete(key),
+  );
   return task;
 }
 
 // ── Lectura ───────────────────────────────────────────────────
 
 function buildIncident(issue: Issue, steps: Step[]): Incident {
-  const prStep = [...steps].reverse().find((s) => s.data.pr);
-  const mergeStep = steps.find((s) => s.kind === "merged");
+  const attempt = currentAttempt(steps);
+  const prStep = [...attempt].reverse().find((s) => s.data.pr);
+  const mergeStep = attempt.find((s) => s.kind === "merged");
   return {
     number: issue.number,
     title: issue.title,
@@ -156,11 +180,11 @@ export async function getIncident(repo: Repo, n: number): Promise<Incident | nul
 }
 
 /** Lista liviana para el panel (sin leer comentarios de cada issue). */
-export async function listIncidents(repo: Repo): Promise<{ number: number; title: string; createdAt: string; open: boolean }[]> {
+export async function listIncidents(repo: Repo): Promise<IncidentSummary[]> {
   const issues = await repo.listIncidentIssues("all");
   return issues
     .filter((i) => parseIssueBody(i.body))
-    .map((i) => ({ number: i.number, title: i.title, createdAt: i.created_at, open: i.state === "open" }));
+    .map((i) => ({ number: i.number, title: i.title, createdAt: i.created_at, open: i.state === "open", stopped: i.state === "closed" && i.state_reason === "not_planned" }));
 }
 
 // ── Reparaciones de hallazgos ─────────────────────────────────

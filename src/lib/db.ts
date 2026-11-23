@@ -2,7 +2,7 @@ import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "./env";
 
-// Base de datos propia de Autosana (usuarios, proyectos, respaldos).
+// Base de datos propia de Fixie (usuarios, proyectos, respaldos).
 // Solo el servidor la toca, con la clave secreta; RLS bloquea todo lo demás.
 
 export type UserRow = {
@@ -12,6 +12,14 @@ export type UserRow = {
   name: string | null;
   avatar_url: string | null;
   github_token_enc: string;
+  plan: "free" | "pro" | "max" | "enterprise";
+  /** Día del último pago: ancla el ciclo de consumo. Sin pago (Free), cuenta desde el registro. */
+  plan_started_at: string | null;
+  /** Sube al cerrar sesión: invalida todas las cookies emitidas antes. */
+  session_version: number;
+  created_at: string;
+  mcp_token_hint?: string | null;
+  mcp_token_created_at?: string | null;
 };
 
 export type ProjectRow = {

@@ -5,15 +5,14 @@ import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { listWritableRepos } from "@/lib/github";
 import { requireUserRow } from "@/lib/session";
-import { SiteHeader } from "../../site-header";
+import { AppShell } from "../../app-shell";
 import { NewProjectForm } from "./new-project-form";
 
 export const metadata = { title: "Nuevo proyecto" };
 
 export default function NewProjectPage() {
   return (
-    <>
-      <SiteHeader />
+    <AppShell>
       <main className="mx-auto flex w-full max-w-[680px] flex-1 flex-col px-4 pb-20 pt-8 md:px-6">
         <nav aria-label="Ruta" className="flex items-center gap-1 text-[13px] text-fg-3">
           <Link href="/proyectos" className="rounded hover:text-fg">
@@ -30,7 +29,7 @@ export default function NewProjectPage() {
           </Suspense>
         </div>
       </main>
-    </>
+    </AppShell>
   );
 }
 

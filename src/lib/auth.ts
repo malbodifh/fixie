@@ -24,6 +24,6 @@ export async function signInWithGitHubToken(token: string): Promise<UserRow> {
       .select("*")
       .single<UserRow>(),
   );
-  await startSession(user.id);
+  await startSession(user);
   return user;
 }

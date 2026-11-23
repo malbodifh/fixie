@@ -3,8 +3,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/session";
 import { Console } from "./console";
-import { FixieLogo } from "./logo";
 import { Mascot } from "./mascot";
+import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
 import { SNIPPET } from "./snippet";
 
@@ -45,7 +45,7 @@ export default function Home() {
                 Ver una demo
               </a>
             </div>
-            <p className="mt-6 text-[13px] text-fg-3">Para apps de Next.js. Tu base de datos nunca se modifica.</p>
+            <p className="mt-6 text-[13px] text-fg-3">Para apps de Next.js. Tus datos nunca se modifican.</p>
           </div>
           <HeroWindow />
         </section>
@@ -80,13 +80,13 @@ export default function Home() {
                 <span className="ml-auto shrink-0 text-ok">Arreglado en 1:02</span>
               </div>
             </Feature>
-            <Feature icon={ShieldCheck} title="Pentesting" text="Cabeceras, cookies y CORS, y tus dependencias vigiladas 24/7: si sale una vulnerabilidad, Fixie actualiza.">
+            <Feature icon={ShieldCheck} title="Pentesting" text="Cabeceras, cookies y CORS. En los planes de pago, tus dependencias vigiladas 24/7: si sale una vulnerabilidad, Fixie actualiza.">
               <FindingRow sev="Alto" tone="bad" text="Sin Content-Security-Policy" />
             </Feature>
             <Feature icon={MousePointerClick} title="Conversión" text="Lo que hace que un visitante compre, se registre o te escriba.">
               <FindingRow sev="Medio" tone="warn" text="Campos del checkout sin etiqueta" />
             </Feature>
-            <Feature icon={Gauge} title="Lighthouse" text="La auditoría de Google en móvil: rendimiento, accesibilidad, buenas prácticas y SEO.">
+            <Feature icon={Gauge} title="Lighthouse" text="La auditoría de Google en móvil y escritorio: rendimiento, accesibilidad, buenas prácticas y SEO.">
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-line bg-surface px-3 py-2.5 sm:grid-cols-4 sm:gap-3">
                 {[
                   ["Rend.", 92],
@@ -185,15 +185,7 @@ export default function Home() {
           </div>
         </section>
       </main>
-      <footer className="border-t border-line">
-        <div className="mx-auto flex w-full max-w-[1200px] items-center justify-between gap-4 px-4 py-6 text-[13px] text-fg-3 md:px-6">
-          <span className="flex items-center gap-2">
-            <FixieLogo size={16} />
-            Fixie
-          </span>
-          <span>Hecho en el hackathon de Dojo</span>
-        </div>
-      </footer>
+      <SiteFooter />
     </>
   );
 }

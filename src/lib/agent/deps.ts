@@ -80,7 +80,8 @@ async function regenerateLock(pkgText: string, lockText: string): Promise<string
     // En Windows npm es un .cmd: se llama vía cmd.exe con argumentos fijos.
     const [cmd, argv] = process.platform === "win32" ? ["cmd.exe", ["/d", "/s", "/c", "npm", ...args]] : ["npm", args];
     await new Promise<void>((resolve, reject) =>
-      execFile(cmd, argv, { cwd: dir, timeout: 180_000 }, (err) => (err ? reject(err) : resolve())),
+      // Corre en una carpeta temporal: no hace falta empaquetar archivos del proyecto.
+      execFile(/*turbopackIgnore: true*/ cmd, argv, { cwd: dir, timeout: 180_000 }, (err) => (err ? reject(err) : resolve())),
     );
     return await readFile(join(dir, "package-lock.json"), "utf8");
   } catch {
@@ -166,6 +167,7 @@ export async function updateDepsAndOpenPR(ctx: ProjectContext, issueNumber: numb
   const done: Target[] = [];
   const skipped: string[] = [];
   const regen: Target[] = [];
+  const indirect = new Set<string>();
 
   for (const t of targets.values()) {
     const all = Object.keys(packages).filter((p) => p && nameOf(p) === t.name && cmp(packages[p].version ?? "", t.to) < 0);
@@ -218,12 +220,16 @@ export async function updateDepsAndOpenPR(ctx: ProjectContext, issueNumber: numb
       const root = packages[""];
       if (root?.[field]?.[t.name]) root[field]![t.name] = next;
     }
-    // Indirecta que necesita regenerar: un override obliga a npm a usar la versión corregida.
-    if (!compatible && !direct) pkg.overrides = { ...(pkg.overrides ?? {}), [t.name]: `^${t.to}` };
+    if (!direct) indirect.add(t.name);
     done.push(t);
   }
 
   if (done.length === 0) throw new Error(`No pude actualizar automáticamente. ${skipped.join(" · ")}`);
+  // Si hay que regenerar, npm parte del lockfile original y no ve los parches del
+  // camino 1: cada indirecta lleva un override que lo obliga a usar la versión corregida.
+  if (regen.length) {
+    for (const t of done) if (indirect.has(t.name)) pkg.overrides = { ...(pkg.overrides ?? {}), [t.name]: `^${t.to}` };
+  }
 
   const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
   let lockOut = json(lock);
@@ -233,9 +239,13 @@ export async function updateDepsAndOpenPR(ctx: ProjectContext, issueNumber: numb
     // Si un paquete no puede subir (otro lo fija a una versión exacta), se deja fuera,
     // se quita su override y se regenera otra vez con el resto.
     let regenerated: string | null = null;
+    let npmFailed = false;
     for (let attempt = 0; attempt < 2 && done.length; attempt++) {
       regenerated = await regenerateLock(json(pkg), lockText);
-      if (!regenerated) break;
+      if (!regenerated) {
+        npmFailed = true;
+        break;
+      }
       const check = (JSON.parse(regenerated) as Lock).packages ?? {};
       const stuck = done.filter((t) => vulnerableCopies(check, t.name, t.to).length > 0);
       if (stuck.length === 0) break;
@@ -253,7 +263,7 @@ export async function updateDepsAndOpenPR(ctx: ProjectContext, issueNumber: numb
     if (pkg.overrides && Object.keys(pkg.overrides).length === 0) delete pkg.overrides;
     if (!regenerated || done.length === 0) {
       throw new Error(
-        `No pude actualizar de forma segura${regenerated === null && done.length ? " (npm no está disponible para regenerar el lockfile)" : ""}. ${skipped.join(" · ")}`,
+        `No pude actualizar de forma segura${npmFailed ? " (npm no está disponible para regenerar el lockfile)" : ""}. ${skipped.join(" · ")}`,
       );
     }
     lockOut = regenerated;

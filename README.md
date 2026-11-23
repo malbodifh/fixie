@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fixie
 
-## Getting Started
+Fixie keeps a production web app healthy with nobody on call.
 
-First, run the development server:
+When the app throws in production, Fixie:
+
+1. reproduces the error with a failing test in CI;
+2. writes the fix;
+3. lets an adversarial reviewer agent try to break the fix again (up to 3 rounds);
+4. merges to `main` and checks that the deploy is live.
+
+Fixie also audits the live app (Errores, Pentesting, Conversión, Lighthouse) and repairs what code can fix through the same loop. The client's database is never written to: Fixie may only add structure, after a backup and a dry run that is rolled back.
+
+Product truth lives in [PRODUCT.md](PRODUCT.md) and the visual system in [DESIGN.md](DESIGN.md).
+
+## Stack
+
+- Next.js 16 (App Router, Turbopack), React 19, Tailwind CSS v4
+- Supabase for Fixie's own database and backups storage (server-only, secret key)
+- GitHub OAuth; incidents live as GitHub issues and pull requests
+- DeepSeek V4.1 Flash through the AI SDK for the agents
+- Vercel for hosting, with Vercel Schedules for the crons
+
+## Running locally
 
 ```bash
+npm install
+cp .env.example .env.local   # fill in the values, see below
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000. In development you can sign in without an OAuth App: set `DEV_GITHUB_TOKEN` (for example from `gh auth token`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Required | Purpose |
+|---|---|---|
+| `AUTOSANA_SECRET` | yes | Master key: encrypts tokens and DB connections, signs the session (32 random bytes). |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | yes | Fixie's own database. Only the server uses them. |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | production | GitHub OAuth App. Callback: `<base url>/api/auth/callback`. Scopes: `repo workflow read:user`. |
+| `AUTOSANA_BASE_URL` | production | Public URL of Fixie. On Vercel it falls back to `VERCEL_PROJECT_PRODUCTION_URL`. |
+| `CRON_SECRET` | production | Bearer secret for the cron and motor routes. Without it they refuse every call. |
+| `DEEPSEEK_API_KEY` | for AI work | Agents, daily diff review, copy suggestions and the in-app assistant. |
+| `AGENT_MODEL`, `AGENT_FAST_MODEL` | no | Override the model aliases (default `deepseek-flash`). |
+| `PSI_API_KEY` | for Lighthouse | PageSpeed Insights API key. |
+| `DEV_GITHUB_TOKEN` | development only | Sign in without an OAuth App. Ignored in production. |
 
-## Learn More
+The internal `AUTOSANA_*` names are kept from the working name until a planned rename.
 
-To learn more about Next.js, take a look at the following resources:
+## Database
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The schema is versioned in [supabase/migrations](supabase/migrations). Apply the files in order to a new Supabase project, for example with `supabase db push`. Row level security is on for every table with no policies, so only the server (secret key) can read or write.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Scripts
 
-## Deploy on Vercel
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build and server |
+| `npm run typecheck` | TypeScript, no emit |
+| `npm run lint` | ESLint |
+| `npm test` | Unit tests (`src/**/*.test.ts`, Node's test runner through tsx) |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs typecheck, lint, tests and the build on every push and pull request.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Layout
+
+```
+src/app            pages, server actions and API routes
+src/app/api        auth, ingest (/api/incidents), crons, motor, chat, MCP
+src/lib/agent      the agents: diagnose, fix, review, repair, dependency updates
+src/lib/scans      Errores, Pentesting (surface, Shannon deep pentest, dependencies), Conversión, Lighthouse
+src/lib/clientdb   read-only access to the client's database and the SQL guard
+supabase           Fixie's own database migrations
+demo-tienda        demo store with planted bugs (its own repo, ignored here)
+```
+
+## Safety rules
+
+- `src/lib/clientdb/guard.ts` is the first barrier for the client's database. Postgres (read-only transactions, role permissions) is the second. Never weaken it. Its tests are in `guard.test.ts`.
+- Shannon, the deep pentester, never attacks production. It runs in the client's own GitHub Actions against a throwaway copy of the app, with the production schema and no rows.
+- The model key for Shannon belongs to the client and is stored only as an encrypted GitHub secret.

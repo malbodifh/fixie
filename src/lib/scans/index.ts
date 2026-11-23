@@ -8,7 +8,7 @@ import { projectContext } from "../projects";
 import { runConversion } from "./conversion";
 import { runDeps } from "./deps";
 import { runErrors } from "./errors";
-import { deepProgress, deepSetup, dispatchDeep } from "./shannon";
+import { deepProgress, deepSetup, dispatchDeep, syncTestSchema } from "./shannon";
 
 export type ScanRow = {
   id: string;
@@ -36,7 +36,7 @@ export async function computeScan(project: ScanProject, kind: ScanKind): Promise
   if (kind === "errors") {
     try {
       const last = await latestScan(project.id, "errors");
-      return await runErrors({ appUrl: project.app_url, repo: (await projectContext(project)).repo, lastCommit: (last?.meta?.commit as string | undefined) ?? null });
+      return await runErrors({ appUrl: project.app_url, repo: (await projectContext(project)).repo, lastCommit: (last?.meta?.commit as string | undefined) ?? null, project });
     } catch (err) {
       return { status: "error", score: null, summary: `No pude buscar errores: ${err instanceof Error ? err.message : err}`, findings: [] };
     }
@@ -49,7 +49,7 @@ export async function computeScan(project: ScanProject, kind: ScanKind): Promise
       kind === "pentest"
         ? await runPentest(project.app_url, !!project.verified_at)
         : kind === "conversion"
-          ? await runConversion(project.app_url)
+          ? await runConversion(project.app_url, project)
           : await runLighthouse(project.app_url);
   } catch (err) {
     result = { status: "error", score: null, summary: `No pude analizar ${project.app_url}: ${err instanceof Error ? err.message : err}`, findings: [] };
@@ -88,13 +88,15 @@ export async function runScan(project: ScanProject, kind: ScanKind): Promise<Sca
 
 /** Lanza Shannon en el CI del repo. Si falta configurarlo, lo dice; si ya corre uno, lo devuelve. */
 export async function startDeep(project: ScanProject): Promise<ScanRow> {
-  const { repo } = await projectContext(project);
+  const { repo, dbUrl } = await projectContext(project);
   const setup = await deepSetup(repo);
   if (!setup.workflow || !setup.secret) {
     return saveScan(project, "pentest_deep", {
       status: "needs_setup",
       score: null,
-      summary: "Activa el pentest profundo: Fixie instala el workflow en tu repo y guarda la clave del modelo como secreto de GitHub.",
+      summary: setup.outdated
+        ? "Fixie tiene una versión nueva del pentest profundo. Pulsa Activar para actualizar el workflow de tu repo."
+        : "Activa el pentest profundo: Fixie instala el workflow en tu repo y guarda la clave del modelo como secreto de GitHub.",
       findings: [],
       meta: setup,
     });
@@ -109,6 +111,8 @@ export async function startDeep(project: ScanProject): Promise<ScanRow> {
     meta: { startedAt: new Date().toISOString() },
   });
   try {
+    // La estructura de producción cambia: se copia de nuevo (sin datos) antes de cada corrida.
+    await syncTestSchema(repo, dbUrl).catch(() => false);
     await dispatchDeep(repo, row.id);
     return row;
   } catch (err) {

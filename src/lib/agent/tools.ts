@@ -89,10 +89,15 @@ export async function readTools(opts: { repo: Repo; ref: string; issue: number; 
       inputSchema: z.object({ texto: z.string().min(2).max(100) }),
       execute: async ({ texto }) => {
         const hits: { path: string; linea: number; texto: string }[] = [];
-        for (const path of files.filter((f) => !f.endsWith(".md"))) {
-          const lines = (await load(path)).split("\n");
-          lines.forEach((l, i) => {
-            if (l.includes(texto) && hits.length < 30) hits.push({ path, linea: i + 1, texto: l.trim().slice(0, 200) });
+        const code = files.filter((f) => !f.endsWith(".md"));
+        // Una petición a GitHub por archivo: de a 10 a la vez, y se para al llegar a 30 coincidencias.
+        for (let start = 0; start < code.length && hits.length < 30; start += 10) {
+          const batch = code.slice(start, start + 10);
+          const texts = await Promise.all(batch.map((path) => load(path)));
+          batch.forEach((path, j) => {
+            texts[j].split("\n").forEach((l, i) => {
+              if (l.includes(texto) && hits.length < 30) hits.push({ path, linea: i + 1, texto: l.trim().slice(0, 200) });
+            });
           });
         }
         return { coincidencias: hits };
@@ -118,5 +123,5 @@ export async function readTools(opts: { repo: Repo; ref: string; issue: number; 
       : {}),
   };
 
-  return { tools, files: files.filter((f) => !f.endsWith(".md")), load };
+  return { tools, files: files.filter((f) => !f.endsWith(".md")) };
 }

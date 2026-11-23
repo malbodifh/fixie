@@ -3,6 +3,7 @@ import { generateText, isStepCount, tool } from "ai";
 import { z } from "zod";
 import { postStep, type Incident } from "../incidents";
 import type { ProjectContext } from "../projects";
+import { isCriticalWork, metered } from "../usage";
 import { agentModel } from "./model";
 import { REPAIR_LABEL } from "../model";
 import { describeWork, readTools, type FileOut } from "./tools";
@@ -83,7 +84,8 @@ export async function reviewFix(ctx: ProjectContext, inc: Incident, fixSha: stri
     }),
   };
 
-  await generateText({
+  await metered({ project: ctx.project, kind: "review", critical: isCriticalWork(inc.repair), incident: inc.number, done: () => proposal !== null }, (m) =>
+    generateText({
     model: agentModel(),
     instructions: inc.repair?.kind === "deps" ? DEPS_INSTRUCTIONS : inc.repair ? REPAIR_INSTRUCTIONS(REPAIR_LABEL[inc.repair.kind]) : INSTRUCTIONS,
     prompt: `${describeWork(inc, ctx.project.app_url)}
@@ -94,9 +96,10 @@ ${diff.map((f) => `--- ${f.filename}\n${(f.patch ?? "").slice(0, 6000)}`).join("
 Archivos de la rama:
 ${files.join("\n")}`,
     tools,
-    stopWhen: [() => proposal !== null, isStepCount(12)],
+    stopWhen: [() => proposal !== null, isStepCount(12), m.stopWhen],
+    onStepEnd: m.onStepEnd,
     maxOutputTokens: 12_000,
-  });
+  }));
 
   const review = proposal as { veredicto: string; razon: string; archivo: FileOut } | null;
   if (!review) throw new Error("El revisor no entregó pruebas.");

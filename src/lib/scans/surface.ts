@@ -1,6 +1,7 @@
 import "server-only";
+import { isIP } from "node:net";
 import { connect, type PeerCertificate } from "node:tls";
-import { fetchApp, type Finding } from "./common";
+import { assertPublicHost, fetchApp, type Finding } from "./common";
 
 /**
  * Superficie del servidor, con los tres módulos de Vertex-Scan como guía
@@ -10,8 +11,12 @@ import { fetchApp, type Finding } from "./common";
 
 /** Certificado y protocolo TLS. Una sola conexión, sin enviar datos. */
 export async function tlsFindings(hostname: string): Promise<Finding[]> {
+  // La conexión resuelve el DNS otra vez: se revisa de nuevo que no sea interno.
+  await assertPublicHost(hostname);
+  const host = hostname.replace(/^\[|\]$/g, "");
   const info = await new Promise<{ cert: PeerCertificate; protocol: string | null; authorized: boolean; error: string | null } | null>((resolve) => {
-    const socket = connect({ host: hostname, port: 443, servername: hostname, rejectUnauthorized: false, timeout: 8000 }, () => {
+    // SNI solo con nombres: una IP como servername no es válida.
+    const socket = connect({ host, port: 443, servername: isIP(host) ? undefined : host, rejectUnauthorized: false, timeout: 8000 }, () => {
       resolve({ cert: socket.getPeerCertificate(), protocol: socket.getProtocol(), authorized: socket.authorized, error: socket.authorizationError ? String(socket.authorizationError) : null });
       socket.end();
     });

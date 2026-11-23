@@ -1,7 +1,7 @@
 "use client";
 
-import { CircleAlert, CircleCheck, DatabaseBackup, Download, KeyRound, Loader2, Unlink } from "lucide-react";
-import { useActionState } from "react";
+import { CircleCheck, DatabaseBackup, Download, KeyRound, Loader2, Unlink } from "lucide-react";
+import { useActionState, useState } from "react";
 import { timeAgo } from "../../time";
 import {
   backupNowAction,
@@ -11,25 +11,7 @@ import {
   updateSettingsAction,
   type ActionState,
 } from "../actions";
-import { DbRoleHelp, KeyReveal } from "../ui";
-
-export function Note({ state }: { state: ActionState }) {
-  if (state?.error)
-    return (
-      <p role="alert" className="flex items-start gap-2 rounded-lg bg-bad-bg px-3 py-2.5 text-[13px] text-bad">
-        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-        {state.error}
-      </p>
-    );
-  if (state?.message)
-    return (
-      <p role="status" className="flex items-start gap-2 rounded-lg bg-ok-bg px-3 py-2.5 text-[13px] text-ok">
-        <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" />
-        {state.message}
-      </p>
-    );
-  return null;
-}
+import { DbRoleHelp, keepFields, KeyReveal, Note } from "../ui";
 
 function Head({ title, text, children }: { title: string; text: string; children?: React.ReactNode }) {
   return (
@@ -48,7 +30,8 @@ export function SettingsPanel({ projectId, name, appUrl, autoMerge }: { projectI
   return (
     <section className="card overflow-hidden">
       <Head title="Conexiones" text="Nombre del proyecto y dónde vive tu app." />
-      <form action={action} className="flex flex-col gap-5 p-5">
+      {/* Si la acción falla, lo escrito se conserva; al guardar, la key con los valores nuevos rehace el formulario. */}
+      <form key={`${name}\n${appUrl ?? ""}\n${autoMerge}`} onSubmit={keepFields(action)} className="flex flex-col gap-5 p-5">
         <label className="flex flex-col gap-1.5">
           <span className="label">Nombre</span>
           <input name="name" defaultValue={name} maxLength={60} className="input" />
@@ -85,6 +68,10 @@ export function DatabasePanel({ projectId, label, backups }: { projectId: string
   const [linkState, link, linking] = useActionState<ActionState, FormData>(linkDatabaseAction.bind(null, projectId), null);
   const [backupState, backup, backingUp] = useActionState<ActionState, FormData>(backupNowAction.bind(null, projectId), null);
   const [unlinkState, unlink, unlinking] = useActionState<ActionState, FormData>(unlinkDatabaseAction.bind(null, projectId), null);
+  // Solo se muestra el resultado de la última acción: así un "Conectada" viejo no
+  // aparece tras desvincular, ni un respaldo anterior tapa el error de desvincular.
+  const [last, setLast] = useState<"link" | "backup" | "unlink" | null>(null);
+  const note = last === "link" ? linkState : last === "backup" ? backupState : last === "unlink" ? unlinkState : null;
 
   return (
     <section className="card overflow-hidden">
@@ -102,7 +89,7 @@ export function DatabasePanel({ projectId, label, backups }: { projectId: string
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="min-w-0 truncate font-mono text-[13px] text-fg-2">{label}</p>
               <div className="flex flex-wrap gap-2">
-                <form action={backup}>
+                <form action={backup} onSubmit={() => setLast("backup")}>
                   <button disabled={backingUp} className="btn btn-primary btn-sm">
                     {backingUp ? <Loader2 className="animate-spin" /> : <DatabaseBackup />}
                     {backingUp ? "Respaldando…" : "Respaldar ahora"}
@@ -112,6 +99,7 @@ export function DatabasePanel({ projectId, label, backups }: { projectId: string
                   action={unlink}
                   onSubmit={(e) => {
                     if (!confirm("Fixie dejará de leer esta base de datos. Tus respaldos se conservan. ¿Desvincular?")) e.preventDefault();
+                    else setLast("unlink");
                   }}
                 >
                   <button disabled={unlinking} className="btn btn-outline btn-sm">
@@ -121,7 +109,7 @@ export function DatabasePanel({ projectId, label, backups }: { projectId: string
                 </form>
               </div>
             </div>
-            <Note state={backupState ?? unlinkState} />
+            <Note state={note} />
             <div>
               <p className="label mb-2">Respaldos</p>
               {backups.length === 0 ? (
@@ -150,18 +138,32 @@ export function DatabasePanel({ projectId, label, backups }: { projectId: string
             </div>
           </>
         ) : (
-          <form action={link} className="flex flex-col gap-3">
+          <form
+            onSubmit={(e) => {
+              setLast("link");
+              keepFields(link)(e);
+            }}
+            className="flex flex-col gap-3"
+          >
             <p className="max-w-[70ch] text-[13px] text-fg-2">
               Vincúlala para que Fixie pueda leer datos al diagnosticar y proponer estructura nueva cuando un arreglo la necesite.
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <input name="dbUrl" type="password" required autoComplete="off" placeholder="postgresql://fixie:…@host:5432/postgres" className="input font-mono text-[13px]" />
+              <input
+                name="dbUrl"
+                type="password"
+                required
+                autoComplete="off"
+                aria-label="URL de Postgres"
+                placeholder="postgresql://fixie:…@host:5432/postgres"
+                className="input font-mono text-[13px]"
+              />
               <button disabled={linking} className="btn btn-primary shrink-0">
                 {linking && <Loader2 className="animate-spin" />}
                 {linking ? "Probando conexión…" : "Vincular"}
               </button>
             </div>
-            <Note state={linkState} />
+            <Note state={note} />
           </form>
         )}
         <DbRoleHelp />

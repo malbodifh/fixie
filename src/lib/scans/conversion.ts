@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { askStructured } from "../agent/ask";
+import type { ProjectRow } from "../db";
 import { hasModelKey } from "../agent/model";
 import { fetchApp, scoreOf, summaryOf, type Finding, type ScanResult } from "./common";
 
@@ -36,10 +37,13 @@ const ACTION =
 
 const NEXT_METADATA = "En Next.js, defínelo en `export const metadata` del layout.";
 
-export async function runConversion(appUrl: string): Promise<ScanResult> {
+export async function runConversion(appUrl: string, project: Pick<ProjectRow, "id" | "owner_id">): Promise<ScanResult> {
   const origin = new URL(appUrl).origin;
   const res = await fetchApp(appUrl);
   const html = await res.text();
+  // La estructura se lee sin el contenido de los <script> y <style>: el payload de React
+  // trae fragmentos que parecen etiquetas (<a…>) y ensuciaban botones y enlaces.
+  const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
   const f: Finding[] = [];
   const add = (x: Finding) => f.push(x);
 
@@ -52,7 +56,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
     detail: res.ok ? `Respondió ${res.status}.` : `Respondió ${res.status}: cada visita es una venta perdida.`,
     fix: "Revisa el error del servidor en esta ruta; Fixie lo trata como un incidente.",
   });
-  const viewport = meta(html, "viewport");
+  const viewport = meta(markup, "viewport");
   add({
     id: "viewport",
     title: "Se adapta al móvil",
@@ -63,7 +67,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
   });
 
   // ── Propuesta de valor y acción principal ──
-  const h1s = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)].map((m) => textOf(m[1]));
+  const h1s = [...markup.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)].map((m) => textOf(m[1]));
   const headline = h1s[0] ?? "";
   add({
     id: "headline",
@@ -74,7 +78,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
     fix: "Un solo <h1> que diga en una frase qué ofreces y para quién.",
   });
 
-  const controls = [...html.matchAll(/<(a|button)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].map((m) => ({ tag: m[1].toLowerCase(), attrs: m[2], text: textOf(m[3]) }));
+  const controls = [...markup.matchAll(/<(a|button)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].map((m) => ({ tag: m[1].toLowerCase(), attrs: m[2], text: textOf(m[3]) }));
   const ctas = controls.filter((c) => ACTION.test(c.text) || ACTION.test(attr(`<x ${c.attrs}>`, "aria-label") ?? ""));
   add({
     id: "cta",
@@ -86,16 +90,16 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
   });
 
   // ── Formularios sin fricción ──
-  const inputs = [...html.matchAll(/<(input|select|textarea)\b([^>]*)>/gi)]
+  const inputs = [...markup.matchAll(/<(input|select|textarea)\b([^>]*)>/gi)]
     .map((m) => ({ tag: m[1].toLowerCase(), raw: m[0] }))
     .filter((i) => !/type=["'](hidden|submit|button|image|reset|checkbox|radio)["']/i.test(i.raw));
-  const labelFor = new Set([...html.matchAll(/<label\b[^>]*\sfor=["']([^"']+)["']/gi)].map((m) => m[1]));
+  const labelFor = new Set([...markup.matchAll(/<label\b[^>]*\sfor=["']([^"']+)["']/gi)].map((m) => m[1]));
   const unlabeled = inputs.filter((i) => {
     const id = attr(i.raw, "id");
     return !(attr(i.raw, "aria-label") || attr(i.raw, "aria-labelledby") || (id && labelFor.has(id)));
   });
   // Un input dentro de <label>…</label> también cuenta como etiquetado.
-  const wrapped = (html.match(/<label\b[^>]*>[\s\S]*?<\/label>/gi) ?? []).join(" ");
+  const wrapped = (markup.match(/<label\b[^>]*>[\s\S]*?<\/label>/gi) ?? []).join(" ");
   const reallyUnlabeled = unlabeled.filter((i) => !wrapped.includes(i.raw));
   if (inputs.length) {
     add({
@@ -121,7 +125,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
       detail: wrongType.length ? `${wrongType.length} campos de correo o teléfono sin type o autocomplete: en el móvil sale el teclado equivocado.` : "Correo y teléfono usan el tipo y el autocompletado correctos.",
       fix: "Usa `type=\"email\" autocomplete=\"email\"` y `type=\"tel\" autocomplete=\"tel\"`.",
     });
-    const forms = (html.match(/<form\b[\s\S]*?<\/form>/gi) ?? []).map((form) => (form.match(/<(input|select|textarea)\b/gi) ?? []).length);
+    const forms = (markup.match(/<form\b[\s\S]*?<\/form>/gi) ?? []).map((form) => (form.match(/<(input|select|textarea)\b/gi) ?? []).length);
     const longest = Math.max(0, ...forms);
     add({
       id: "form-length",
@@ -136,17 +140,19 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
   // ── Enlaces e imágenes rotos ──
   const hrefs = [
     ...new Set(
-      [...html.matchAll(/<a\b[^>]*\shref=["']([^"'#]+)["']/gi)]
+      [...markup.matchAll(/<a\b[^>]*\shref=["']([^"'#]+)["']/gi)]
         .map((m) => m[1])
         .filter((h) => !/^(mailto|tel|javascript):/i.test(h))
         .map((h) => {
           try {
-            return new URL(h, origin).href;
+            const u = new URL(h, origin);
+            // Mismo origen exacto: startsWith dejaría pasar https://tuapp.com.otro-sitio.com.
+            return u.origin === origin ? u.href : null;
           } catch {
             return null;
           }
         })
-        .filter((h): h is string => !!h && h.startsWith(origin)),
+        .filter((h): h is string => !!h),
     ),
   ].slice(0, 15);
   const linkChecks = await Promise.all(hrefs.map(async (h) => ({ h, status: (await fetchApp(h, { method: "GET" }, 8000).catch(() => null))?.status ?? 0 })));
@@ -162,7 +168,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
 
   const srcs = [
     ...new Set(
-      [...html.matchAll(/<img\b[^>]*\ssrc=["']([^"']+)["']/gi)]
+      [...markup.matchAll(/<img\b[^>]*\ssrc=["']([^"']+)["']/gi)]
         .map((m) => m[1])
         .filter((s) => !s.startsWith("data:"))
         .map((s) => {
@@ -189,7 +195,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
   }
 
   // ── Confianza ──
-  const text = textOf(html).toLowerCase();
+  const text = textOf(markup).toLowerCase();
   const trust = ["privacidad", "privacy", "términos", "terminos", "terms", "contacto", "contact", "devoluc", "envío", "envio", "garantía", "garantia"].filter((w) => text.includes(w));
   add({
     id: "trust",
@@ -201,7 +207,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
   });
 
   // ── Al compartir el enlace ──
-  const og = ["og:title", "og:description", "og:image"].filter((k) => !meta(html, k));
+  const og = ["og:title", "og:description", "og:image"].filter((k) => !meta(markup, k));
   add({
     id: "social-preview",
     title: "Vista previa al compartir",
@@ -234,7 +240,7 @@ export async function runConversion(appUrl: string): Promise<ScanResult> {
 
   // ── Textos: sugerencias que el usuario elige aplicar o no ──
   const copy = extractCopy(html);
-  const suggestions = hasModelKey() ? await copySuggestions(copy).catch(() => []) : [];
+  const suggestions = hasModelKey() ? await copySuggestions(copy, project).catch(() => []) : [];
   f.push(...suggestions);
 
   const technical = f.filter((x) => !x.copy);
@@ -286,7 +292,7 @@ Reglas:
 - Mismo idioma de la página. Sin emojis. Longitud parecida al original.
 - No inventes datos (precios, cifras, testimonios, garantías) que la página no tenga.`;
 
-async function copySuggestions(copy: { role: string; text: string }[]): Promise<Finding[]> {
+async function copySuggestions(copy: { role: string; text: string }[], project: Pick<ProjectRow, "id" | "owner_id">): Promise<Finding[]> {
   if (copy.length === 0) return [];
   const out = await askStructured({
     name: "sugerir_textos",
@@ -307,6 +313,7 @@ async function copySuggestions(copy: { role: string; text: string }[]): Promise<
     prompt: copy.map((c) => `[${c.role}] ${c.text}`).join("\n"),
     fast: true,
     maxOutputTokens: 2000,
+    usage: { project, kind: "copy" },
   });
   const known = new Map(copy.map((c) => [c.text, c.role]));
   return (out?.cambios ?? [])

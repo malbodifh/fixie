@@ -6,8 +6,10 @@ import { getIncident } from "@/lib/incidents";
 
 export const maxDuration = 300;
 
-// Los archivos del PR cambian con cada ronda: se cachean por commit.
+// Los archivos del PR cambian con cada ronda: se cachean por paso. Con tope:
+// el servidor vive mucho y cada paso nuevo agrega una entrada.
 const diffCache = new Map<string, PullFile[]>();
+const DIFF_CACHE_MAX = 200;
 
 /** Detalle de un incidente. Cada consulta además avanza su ciclo en el entorno de pruebas. */
 export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]/incidents/[n]">) {
@@ -32,8 +34,13 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/projects/[id]/i
   let diff: PullFile[] = [];
   if (incident.pr) {
     const key = `${project.project.id}:${incident.pr}:${incident.steps.length}`;
-    diff = diffCache.get(key) ?? (await project.repo.listPullFiles(incident.pr));
-    diffCache.set(key, diff);
+    const cached = diffCache.get(key);
+    diff = cached ?? (await project.repo.listPullFiles(incident.pr));
+    if (!cached) {
+      diffCache.set(key, diff);
+      // Map conserva el orden de inserción: se descarta la entrada más vieja.
+      if (diffCache.size > DIFF_CACHE_MAX) diffCache.delete(diffCache.keys().next().value!);
+    }
   }
 
   return Response.json({ incident, diff });
